@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Monitor {
+  id              String        @id @default(cuid())
+  name            String
+  url             String
+  intervalSeconds Int           @default(60)
+  timeoutMs       Int           @default(5000)
+  enabled         Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  measurements    Measurement[]
+}
+
+model Measurement {
+  id          String   @id @default(cuid())
+  monitorId   String
+  startedAt   DateTime
+  completedAt DateTime @default(now())
+  success     Boolean
+  latencyMs   Int?
+  statusCode  Int?
+  errorCode   String?
+  errorMessage String?
+  monitor     Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, completedAt])
+}
