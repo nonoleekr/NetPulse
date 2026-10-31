@@ -82,6 +82,14 @@ input {
   background: #0b111c;
   font: inherit;
 }
+select {
+  border: 1px solid #34445c;
+  border-radius: 10px;
+  padding: 13px 14px;
+  color: #e8edf5;
+  background: #0b111c;
+  font: inherit;
+}
 button {
   border: 0;
   border-radius: 10px;

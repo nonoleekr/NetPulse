@@ -44,6 +44,21 @@ function isPrivateOrReserved(address: string) {
     || first >= 224;
 }
 
+export async function validateHost(host: string) {
+  const addresses = isIP(host)
+    ? [{ address: host, family: host.includes(":") ? 6 : 4 }]
+    : await lookup(host, { all: true, verbatim: true });
+  if (!addresses.length) throw new Error("Target hostname did not resolve");
+  if (!config.allowLocalTargets && addresses.some(({ address }) => isPrivateOrReserved(address))) {
+    throw new Error("Private, loopback, and reserved targets are blocked");
+  }
+  if (config.allowLocalTargets && addresses.some(({ address }) => isPrivateOrReserved(address)
+    && !localAddresses.has(address))) {
+    throw new Error("Only loopback targets are allowed for local fixtures");
+  }
+  return addresses;
+}
+
 export async function validateHttpTarget(
   rawUrl: string,
   resolve: ResolveAll = lookup,
@@ -69,16 +84,11 @@ export async function validateHttpTarget(
   }
 
   const addresses = isIP(url.hostname)
-    ? [{ address: url.hostname }]
+    ? [{ address: url.hostname, family: url.hostname.includes(":") ? 6 : 4 }]
     : await resolve(url.hostname, { all: true, verbatim: true });
-  if (!addresses.length) {
-    throw new Error("Target hostname did not resolve");
-  }
-
+  if (!addresses.length) throw new Error("Target hostname did not resolve");
   const onlyLocal = addresses.every(({ address }) => localAddresses.has(address));
   if (onlyLocal && config.allowLocalTargets) return { url: url.toString(), address: addresses[0].address };
-  if (addresses.some(({ address }) => isPrivateOrReserved(address))) {
-    throw new Error("Private, loopback, and reserved targets are blocked");
-  }
+  if (addresses.some(({ address }) => isPrivateOrReserved(address))) throw new Error("Private, loopback, and reserved targets are blocked");
   return { url: url.toString(), address: addresses[0].address };
 }

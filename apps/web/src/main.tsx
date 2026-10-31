@@ -14,6 +14,9 @@ type Monitor = {
   id: string;
   name: string;
   url: string;
+  kind: "HTTP" | "TCP" | "ICMP";
+  host: string | null;
+  port: number | null;
   measurements: Measurement[];
   completedProbes: number;
   failedProbes: number;
@@ -29,6 +32,9 @@ function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [name, setName] = useState("Local test");
   const [url, setUrl] = useState("https://example.com");
+  const [kind, setKind] = useState<Monitor["kind"]>("HTTP");
+  const [host, setHost] = useState("example.com");
+  const [port, setPort] = useState("443");
   const [error, setError] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("reconnecting");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -87,7 +93,9 @@ function App() {
     const response = await fetch(`${api}/monitors`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, url, intervalSeconds: 30, timeoutMs: 5000 }),
+      body: JSON.stringify(kind === "HTTP"
+        ? { name, kind, url, intervalSeconds: 30, timeoutMs: 5000 }
+        : { name, kind, host, ...(kind === "TCP" ? { port: Number(port) } : {}), intervalSeconds: 30, timeoutMs: 5000 }),
     });
     const body = await response.json();
     if (!response.ok) { setError(body.error?.message ?? "Could not create monitor"); return; }
@@ -97,10 +105,18 @@ function App() {
   return <main>
     <header><p className="eyebrow">NETPULSE / MILESTONE 02</p><h1>Know when the network changes.</h1><p className="subtitle">A local-first monitor measuring real HTTP reachability.</p><span className={`connection ${connectionStatus}`}>{connectionStatus === "live" ? "Live" : connectionStatus === "reconnecting" ? "Reconnecting" : "Offline"}</span></header>
     <section className="panel">
-      <h2>Add an HTTP monitor</h2>
+      <h2>Add a monitor</h2>
       <form onSubmit={addMonitor}>
         <input aria-label="Monitor name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Monitor name" />
-        <input aria-label="HTTP URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
+        <select aria-label="Probe type" value={kind} onChange={(e) => setKind(e.target.value as Monitor["kind"])}>
+          <option value="HTTP">HTTP(S)</option>
+          <option value="TCP">TCP</option>
+          <option value="ICMP">ICMP</option>
+        </select>
+        {kind === "HTTP"
+          ? <input aria-label="HTTP URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
+          : <input aria-label="Host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="example.com or IP address" />}
+        {kind === "TCP" && <input aria-label="TCP port" type="number" min="1" max="65535" value={port} onChange={(e) => setPort(e.target.value)} placeholder="443" />}
         <button type="submit">Start monitoring</button>
       </form>
       {error && <p className="error">{error}</p>}
@@ -109,7 +125,7 @@ function App() {
       {monitors.map((monitor) => {
         const latest = monitor.measurements[0];
         return <article className="card" key={monitor.id}>
-          <div className="card-top"><div><h2>{monitor.name}</h2><p>{monitor.url}</p></div><span className={latest?.success ? "pill up" : "pill down"}>{latest?.success ? "ONLINE" : latest ? "DOWN" : "WAITING"}</span></div>
+          <div className="card-top"><div><h2>{monitor.name}</h2><p>{monitor.kind} · {monitor.kind === "TCP" ? `${monitor.host}:${monitor.port}` : monitor.kind === "ICMP" ? monitor.host : monitor.url}</p></div><span className={latest?.success ? "pill up" : "pill down"}>{latest?.success ? "ONLINE" : latest ? "DOWN" : "WAITING"}</span></div>
           <div className="metric"><strong>{latest?.latencyMs ?? "—"}{latest?.latencyMs ? " ms" : ""}</strong><span>latest latency</span></div>
           <div className="stats"><span><strong>{monitor.sampledAvailabilityPercent ?? "—"}%</strong> sampled availability</span><span><strong>{monitor.packetLossPercent ?? "—"}%</strong> packet loss</span></div>
           <p className="muted">{latest ? `Checked ${new Date(latest.completedAt).toLocaleString()}` : "First real probe is running..."}</p>

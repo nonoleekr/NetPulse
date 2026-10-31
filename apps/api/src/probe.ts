@@ -4,14 +4,8 @@ import type { IncomingMessage } from "node:http";
 import { validateHttpTarget } from "./target.js";
 import { config } from "./config.js";
 import type { ResolveTarget } from "./target.js";
-
-export type ProbeResult = {
-  success: boolean;
-  latencyMs: number | null;
-  statusCode?: number;
-  errorCode?: string;
-  errorMessage?: string;
-};
+import type { ProbeResult } from "./probe-types.js";
+export type { ProbeResult } from "./probe-types.js";
 
 function isTimeoutError(error: unknown) {
   return error instanceof Error && (error.name === "AbortError" || error.message === "Probe timed out");

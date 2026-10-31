@@ -4,14 +4,18 @@ import { z } from "zod";
 import { prisma } from "./db.js";
 import { config } from "./config.js";
 import { clearSchedule, runProbe, scheduleMonitor } from "./scheduler.js";
-import { validateHttpTarget } from "./target.js";
+import { validateHost, validateHttpTarget } from "./target.js";
 
-const monitorInput = z.object({
+const commonInput = {
   name: z.string().trim().min(1).max(80),
-  url: z.string().url().max(2048),
   intervalSeconds: z.number().int().min(10).max(86400).default(60),
   timeoutMs: z.number().int().min(250).max(30000).default(5000),
-});
+};
+const monitorInput = z.discriminatedUnion("kind", [
+  z.object({ ...commonInput, kind: z.literal("HTTP"), url: z.string().url().max(2048) }),
+  z.object({ ...commonInput, kind: z.literal("TCP"), host: z.string().trim().min(1).max(253), port: z.number().int().min(1).max(65535) }),
+  z.object({ ...commonInput, kind: z.literal("ICMP"), host: z.string().trim().min(1).max(253) }),
+]);
 
 export const app = express();
 app.use(cors({ origin: config.webOrigin }));
@@ -60,7 +64,7 @@ app.get("/api/monitors/:id", async (request, response) => {
 });
 
 app.post("/api/monitors", async (request, response) => {
-  const parsed = monitorInput.safeParse(request.body);
+  const parsed = monitorInput.safeParse({ kind: request.body.kind ?? "HTTP", ...request.body });
   if (!parsed.success) {
     response.status(400).json({ error: { code: "VALIDATION_ERROR", message: parsed.error.issues[0]?.message ?? "Invalid monitor" } });
     return;
@@ -70,13 +74,31 @@ app.post("/api/monitors", async (request, response) => {
     return;
   }
   let url: string;
+  let host: string | undefined;
+  let port: number | undefined;
   try {
-    url = (await validateHttpTarget(parsed.data.url)).url;
+    if (parsed.data.kind === "HTTP") {
+      url = (await validateHttpTarget(parsed.data.url)).url;
+    } else {
+      host = (await validateHost(parsed.data.host))[0].address;
+      port = parsed.data.kind === "TCP" ? parsed.data.port : undefined;
+      url = parsed.data.host;
+    }
   } catch (error) {
     response.status(400).json({ error: { code: "UNSAFE_TARGET", message: error instanceof Error ? error.message : "Target is not allowed" } });
     return;
   }
-  const monitor = await prisma.monitor.create({ data: { ...parsed.data, url } });
+  const monitor = await prisma.monitor.create({
+    data: {
+      name: parsed.data.name,
+      url,
+      kind: parsed.data.kind,
+      host,
+      port,
+      intervalSeconds: parsed.data.intervalSeconds,
+      timeoutMs: parsed.data.timeoutMs,
+    },
+  });
   void scheduleMonitor(monitor.id);
   response.status(201).json({ data: monitor });
 });

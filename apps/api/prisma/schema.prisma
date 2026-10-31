@@ -11,6 +11,9 @@ model Monitor {
   id              String        @id @default(cuid())
   name            String
   url             String
+  kind            String        @default("HTTP")
+  host            String?
+  port            Int?
   intervalSeconds Int           @default(60)
   timeoutMs       Int           @default(5000)
   enabled         Boolean       @default(true)
