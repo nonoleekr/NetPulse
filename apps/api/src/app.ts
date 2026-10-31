@@ -28,6 +28,12 @@ app.get("/api/monitors", async (_request, response) => {
     include: { measurements: { orderBy: { completedAt: "desc" }, take: 1 } },
   });
   const data = await Promise.all(monitors.map(async (monitor) => {
+    return getMonitorSummary(monitor);
+  }));
+  response.json({ data });
+});
+
+async function getMonitorSummary(monitor: Awaited<ReturnType<typeof prisma.monitor.findFirstOrThrow>>) {
     const [completedProbes, failedProbes] = await Promise.all([
       prisma.measurement.count({ where: { monitorId: monitor.id } }),
       prisma.measurement.count({ where: { monitorId: monitor.id, success: false } }),
@@ -39,8 +45,18 @@ app.get("/api/monitors", async (_request, response) => {
       packetLossPercent: completedProbes ? Math.round((failedProbes / completedProbes) * 10000) / 100 : null,
       sampledAvailabilityPercent: completedProbes ? Math.round(((completedProbes - failedProbes) / completedProbes) * 10000) / 100 : null,
     };
-  }));
-  response.json({ data });
+}
+
+app.get("/api/monitors/:id", async (request, response) => {
+  const monitor = await prisma.monitor.findUnique({
+    where: { id: request.params.id },
+    include: { measurements: { orderBy: { completedAt: "desc" }, take: 1 } },
+  });
+  if (!monitor) {
+    response.status(404).json({ error: { code: "MONITOR_NOT_FOUND", message: "Monitor not found" } });
+    return;
+  }
+  response.json({ data: await getMonitorSummary(monitor) });
 });
 
 app.post("/api/monitors", async (request, response) => {

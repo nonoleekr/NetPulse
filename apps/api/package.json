@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
+    "@netpulse/contracts": "*",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
+    "ws": "^8.18.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -23,6 +25,7 @@
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.0",
     "@types/supertest": "^6.0.3",
+    "@types/ws": "^8.18.1",
     "prisma": "^6.17.1",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",

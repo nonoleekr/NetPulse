@@ -10,6 +10,13 @@ describe("HTTP target validation", () => {
     await expect(validateHttpTarget("http://127.0.0.1:4001")).rejects.toThrow("blocked");
   });
 
+  it.each(["not a url", "ftp://example.com", "http://user:pass@example.com"])(
+    "rejects invalid target %s",
+    async (url) => {
+      await expect(validateHttpTarget(url)).rejects.toThrow();
+    },
+  );
+
   it.each(["::", "::1", "::ffff:127.0.0.1", "ff02::1"])("rejects unsafe IPv6 address %s", async (address) => {
     await expect(validateHttpTarget(`http://[${address}]:4001`)).rejects.toThrow("blocked");
   });

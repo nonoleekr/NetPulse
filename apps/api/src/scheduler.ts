@@ -1,10 +1,13 @@
 import { prisma } from "./db.js";
 import { probeHttp } from "./probe.js";
+import { emitMeasurementCompleted } from "./measurement-events.js";
+import type { WebSocketEvent } from "@netpulse/contracts";
+import type { ProbeResult } from "./probe.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
 const active = new Set<string>();
 
-export async function runProbe(monitorId: string) {
+export async function runProbe(monitorId: string, probe: (url: string, timeoutMs: number) => Promise<ProbeResult> = probeHttp) {
   if (active.has(monitorId)) return null;
   const monitor = await prisma.monitor.findUnique({ where: { id: monitorId } });
   if (!monitor || !monitor.enabled) return null;
@@ -12,8 +15,8 @@ export async function runProbe(monitorId: string) {
   active.add(monitorId);
   const startedAt = new Date();
   try {
-    const result = await probeHttp(monitor.url, monitor.timeoutMs);
-    return await prisma.measurement.create({
+    const result = await probe(monitor.url, monitor.timeoutMs);
+    const measurement = await prisma.measurement.create({
       data: {
         monitorId,
         startedAt,
@@ -25,6 +28,18 @@ export async function runProbe(monitorId: string) {
         errorMessage: result.errorMessage,
       },
     });
+    const event: WebSocketEvent = {
+      type: "measurement.completed",
+      occurredAt: measurement.completedAt.toISOString(),
+      payload: {
+        monitorId: measurement.monitorId,
+        measurementId: measurement.id,
+        completedAt: measurement.completedAt.toISOString(),
+        success: measurement.success,
+      },
+    };
+    emitMeasurementCompleted(event);
+    return measurement;
   } finally {
     active.delete(monitorId);
   }
