@@ -9,4 +9,6 @@ export const config = {
     && ["development", "test"].includes(process.env.NODE_ENV ?? ""),
   maxMonitors: Number(process.env.MAX_MONITORS ?? 100),
   maxResponseBytes: Number(process.env.MAX_RESPONSE_BYTES ?? 1024 * 1024),
+  maxWebSocketClients: Number(process.env.MAX_WEBSOCKET_CLIENTS ?? 25),
+  maxWebSocketPayloadBytes: Number(process.env.MAX_WEBSOCKET_PAYLOAD_BYTES ?? 16 * 1024),
 };

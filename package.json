@@ -3,17 +3,19 @@
   "private": true,
   "workspaces": [
     "apps/api",
-    "apps/web"
+    "apps/web",
+    "packages/contracts"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
-    "dev:api": "npm run dev -w apps/api",
-    "dev:web": "npm run dev -w apps/web",
-    "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "test": "npm run test -w apps/api",
-    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "dev": "npm run build:contracts && concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:api": "npm run build:contracts && npm run dev -w apps/api",
+    "dev:web": "npm run build:contracts && npm run dev -w apps/web",
+    "build": "npm run build -w packages/contracts && npm run build -w apps/api && npm run build -w apps/web",
+    "test": "npm run build:contracts && npm run test -w apps/api",
+    "lint": "npm run build -w packages/contracts && npm run lint -w apps/api && npm run lint -w apps/web",
     "db:generate": "npm run db:generate -w apps/api",
-    "db:migrate": "npm run db:migrate -w apps/api"
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "build:contracts": "npm run build -w packages/contracts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

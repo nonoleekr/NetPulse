@@ -44,4 +44,27 @@ describe("HTTP probe", () => {
     const result = await probeHttp(url, 1000, localTarget);
     expect(result).toMatchObject({ success: false, statusCode: 503, errorCode: "HTTP_STATUS" });
   });
+
+  it("does not follow redirects", async () => {
+    let redirected = false;
+    const url = await startServer((_request, response) => {
+      response.statusCode = 302;
+      response.setHeader("location", "http://127.0.0.1:9/private");
+      response.end();
+    });
+    const result = await probeHttp(url, 1000, async (target) => {
+      redirected = target.includes("/private");
+      return { url: target, address: "127.0.0.1" };
+    });
+    expect(result).toMatchObject({ success: true, statusCode: 302 });
+    expect(redirected).toBe(false);
+  });
+
+  it("times out target validation before a slow DNS result completes", async () => {
+    const validate = () => new Promise<{ url: string; address: string }>((resolve) => {
+      setTimeout(() => resolve({ url: "http://127.0.0.1:9", address: "127.0.0.1" }), 100);
+    });
+    const result = await probeHttp("https://slow-dns.example", 20, validate);
+    expect(result).toMatchObject({ success: false, errorCode: "TIMEOUT" });
+  });
 });
