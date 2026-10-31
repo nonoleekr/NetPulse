@@ -2,11 +2,11 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1 and 2 are complete. NetPulse monitors HTTP(S) targets, stores real measurements in SQLite, and updates the React dashboard through REST plus WebSocket notifications. TCP, ICMP, alerts, and historical charts are planned but not implemented yet.
+> **Current status:** Milestones 1, 2, and 3 are complete. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, and updates the React dashboard through REST plus WebSocket notifications. Alerts and historical charts are planned but not implemented yet.
 
 ## Project Overview
 
-NetPulse is a portfolio project for measuring network reachability from a local Windows machine. It periodically sends real HTTP requests to configured public targets, records whether each request succeeded, measures latency, and keeps the results in a local SQLite database.
+NetPulse is a portfolio project for measuring network reachability from a local Windows machine. It periodically performs real HTTP, TCP, or ICMP checks against configured targets, records whether each probe succeeded, measures latency, and keeps the results in a local SQLite database.
 
 The project is intended to make common monitoring questions easy to answer:
 
@@ -33,7 +33,7 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 | HTTP monitoring | Real HTTP(S) probes with latency, status, timeout, and response-size limits | More detailed HTTP history and configurable policies |
 | Storage | SQLite via Prisma | Retention jobs and larger-scale storage options |
 | Dashboard | React dashboard with latest result and sampled statistics | Charts, time windows, richer status views |
-| Probe types | HTTP(S) only | TCP connect and ICMP probes |
+| Probe types | HTTP(S), TCP connect, and ICMP | Additional probe policies and richer diagnostics |
 | Updates | REST is authoritative; WebSocket notifications trigger targeted reloads and reconnect sync | Broader real-time event coverage |
 | Reliability | Per-monitor scheduling and one in-flight probe | Outage state transitions and recovery tracking |
 | Operations | Local Windows development workflow | CI, Docker, and deployment documentation |
@@ -41,7 +41,7 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 2
+## Current Status: Milestone 3
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -74,6 +74,16 @@ Milestone 2 adds:
 - Bounded exponential reconnection backoff.
 - REST synchronization on initial connection, reconnect, and measurement notifications.
 
+Milestone 3 adds:
+
+- TCP connectivity checks using Node's `net` socket API.
+- Configurable TCP ports with monotonic connection latency measurement.
+- TCP DNS, refusal, timeout, and connection-error classification.
+- ICMP checks using the operating system `ping` utility without shell interpolation.
+- Windows-compatible `ping.exe` arguments and graceful unsupported/permission/unreachable errors.
+- HTTP, TCP, and ICMP monitors sharing the same scheduler, measurement storage, sampled statistics, and WebSocket notifications.
+- Monitor creation fields that change based on the selected probe type.
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -90,9 +100,11 @@ Milestone 2 adds:
 | Supertest | API health endpoint testing |
 | npm workspaces | Monorepo dependency and script management |
 | `node:http`, `node:https`, `node:dns/promises` | Bounded HTTP probing and target resolution |
+| `node:net` | TCP connection probing |
+| `node:child_process` | Safe, argument-array invocation of the system ping utility |
 | Concurrently | Runs the API and frontend development servers together |
 
-Tailwind CSS and Recharts are part of the longer-term architecture but are not dependencies in the current repository. TCP and ICMP probing remain planned.
+Tailwind CSS and Recharts are part of the longer-term architecture but are not dependencies in the current repository. The current UI uses a small custom stylesheet to keep the MVP dependency-light.
 
 ## Installation & First-Time Setup
 
@@ -136,7 +148,7 @@ For normal use, keep this setting disabled:
 NETPULSE_ALLOW_LOCAL_TARGETS=false
 ```
 
-Only enable local loopback targets when running a local HTTP fixture for development or tests:
+Only enable local loopback targets when running a local HTTP, TCP, or ICMP fixture for development or tests:
 
 ```dotenv
 NODE_ENV=development
@@ -178,20 +190,28 @@ npm run dev:web
 
 1. Open <http://localhost:5173>.
 2. Enter a monitor name, such as `Example`.
-3. Enter a public HTTP(S) URL, such as `https://example.com`.
-4. Select **Start monitoring**.
-5. NetPulse performs a real request immediately, saves the measurement, and repeats the check every 30 seconds.
-6. Review the monitor card for the latest status, latency, sampled availability, packet loss, and check time.
+3. Choose `HTTP(S)`, `TCP`, or `ICMP`.
+4. Enter the configuration for that probe:
+   - HTTP(S): a URL such as `https://example.com`.
+   - TCP: a hostname/IP and port such as `example.com` and `443`.
+   - ICMP: a hostname/IP such as `example.com`.
+5. Select **Start monitoring**.
+6. NetPulse performs a real probe immediately, saves the measurement, and repeats the check every 30 seconds.
+7. Review the monitor card for the latest status, latency, sampled availability, packet loss, and check time.
 
 ### Understanding the dashboard
 
-- **ONLINE** means the latest completed HTTP request returned a `2xx` or `3xx` response.
-- **DOWN** means the latest completed request failed, timed out, exceeded the response-size limit, or returned a `4xx`/`5xx` status.
+- **ONLINE** means the latest completed probe succeeded. HTTP requires a `2xx`/`3xx` response, TCP requires a connection, and ICMP requires a ping reply.
+- **DOWN** means the latest completed probe failed, timed out, was refused, was unreachable, or exceeded the HTTP response-size limit.
 - **WAITING** means no completed measurement is available yet.
 - **Latest latency** is measured for the most recent completed request.
 - **Sampled availability** is the percentage of completed probes that succeeded. It is not duration-based uptime because the current milestone does not measure the length of outages.
 - **Packet loss** is the percentage of completed probes that failed.
 - A monitor with no completed probes displays `—` rather than treating missing data as downtime.
+
+### Windows ICMP notes
+
+NetPulse invokes `ping.exe` with an argument array and does not execute a shell command. ICMP availability depends on the local Windows network, firewall, and permissions. A failed or unsupported ICMP probe is stored as a real failed measurement; NetPulse never substitutes simulated latency.
 
 Measurements remain in the SQLite database when the API restarts. The current dashboard summarizes all retained measurements; selectable history windows and retention automation are planned.
 
@@ -208,9 +228,10 @@ Measurements remain in the SQLite database when the API restarts. The current da
   - [x] WebSocket notifications for completed measurements
   - [x] REST remains authoritative after disconnects and reconnects
   - [x] Client reloads current state to recover missed events
-- [ ] **Milestone 3 — Additional probe types**
-  - [ ] TCP connect probing
-  - [ ] Windows-aware ICMP probing and capability reporting
+- [x] **Milestone 3 — TCP and ICMP monitoring**
+  - [x] TCP connect probing with configurable ports
+  - [x] Windows-aware ICMP probing and capability/error reporting
+  - [x] Shared scheduling, persistence, statistics, and WebSocket updates
 - [ ] **Milestone 4 — History and outage analysis**
   - [ ] Selectable measurement windows and charts
   - [ ] Consecutive-failure outage detection
@@ -239,6 +260,9 @@ Measurements remain in the SQLite database when the API restarts. The current da
 │   │       ├── config.ts         Environment configuration
 │   │       ├── db.ts             Prisma client
 │   │       ├── probe.ts          HTTP probe implementation
+│   │       ├── tcp-probe.ts      TCP connection probe
+│   │       ├── icmp-probe.ts     System ping integration
+│   │       ├── probe-types.ts    Shared probe result types
 │   │       ├── scheduler.ts      Scheduled monitor execution
 │   │       ├── target.ts         URL, DNS, and SSRF validation
 │   │       └── server.ts         API startup and shutdown
@@ -261,20 +285,28 @@ npm run lint
 npm run build
 ```
 
-The current suite includes 20 passing API, target-validation, HTTP-probe, scheduler-ordering, and WebSocket tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
+The current suite includes 26 passing API, target-validation, HTTP/TCP/ICMP probe, scheduler-ordering, and WebSocket tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
 
 ## Known Limitations
 
-- HTTP(S) is the only implemented probe type.
+- Probe behavior depends on the target network: firewalls can block TCP or ICMP even when HTTP works.
 - The application is local-only and has no authentication or multi-user support.
-- REST polling/refresh is used; WebSocket updates are not implemented yet.
+- WebSocket notifications are implemented, but REST remains authoritative and is used to recover missed updates.
 - The dashboard shows the latest measurement and all-retained-measurement summary, not selectable historical charts.
 - Availability is sampled availability, not duration-based uptime.
 - Outage detection, recovery events, and notifications are not implemented.
-- TCP, ICMP, DNS-specific, UDP, traceroute, TLS-expiry, and browser-journey checks are not implemented.
+- DNS-specific, UDP, traceroute, TLS-expiry, and browser-journey checks are not implemented.
 - The scheduler runs in the API process and is not designed for horizontal scaling.
 - SQLite is suitable for this single-user local MVP, not for concurrent multi-instance production monitoring.
 - Public deployments require additional authentication, origin/CSRF review, rate limiting, secret management, and operational hardening.
+
+### Troubleshooting
+
+- **TCP shows `DNS_ERROR`:** verify the hostname resolves from the machine running NetPulse.
+- **TCP shows `REFUSED`:** the host is reachable but no service accepted the configured port.
+- **TCP or ICMP shows `TIMEOUT`/`UNREACHABLE`:** check firewalls, VPNs, routing, and whether the target permits that protocol.
+- **ICMP shows `UNSUPPORTED` or `PERMISSION`:** verify that `ping.exe` is available and permitted by Windows security policy.
+- **A local fixture is blocked:** set `NODE_ENV=development` and `NETPULSE_ALLOW_LOCAL_TARGETS=true`; this override is intentionally not accepted in production.
 
 ## License
 

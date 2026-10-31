@@ -3,11 +3,23 @@ import { probeHttp } from "./probe.js";
 import { emitMeasurementCompleted } from "./measurement-events.js";
 import type { WebSocketEvent } from "@netpulse/contracts";
 import type { ProbeResult } from "./probe.js";
+import { probeTcp } from "./tcp-probe.js";
+import { probeIcmp } from "./icmp-probe.js";
+import type { ProbeTarget } from "./probe-types.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
 const active = new Set<string>();
 
-export async function runProbe(monitorId: string, probe: (url: string, timeoutMs: number) => Promise<ProbeResult> = probeHttp) {
+async function executeProbe(target: ProbeTarget, timeoutMs: number) {
+  if (target.kind === "TCP") return probeTcp(target.host ?? target.url, target.port ?? 0, timeoutMs);
+  if (target.kind === "ICMP") return probeIcmp(target.host ?? target.url, timeoutMs);
+  return probeHttp(target.url, timeoutMs);
+}
+
+export async function runProbe(
+  monitorId: string,
+  probe: (target: ProbeTarget, timeoutMs: number) => Promise<ProbeResult> = executeProbe,
+) {
   if (active.has(monitorId)) return null;
   const monitor = await prisma.monitor.findUnique({ where: { id: monitorId } });
   if (!monitor || !monitor.enabled) return null;
@@ -15,7 +27,12 @@ export async function runProbe(monitorId: string, probe: (url: string, timeoutMs
   active.add(monitorId);
   const startedAt = new Date();
   try {
-    const result = await probe(monitor.url, monitor.timeoutMs);
+    const result = await probe({
+      kind: (monitor.kind || "HTTP") as ProbeTarget["kind"],
+      url: monitor.url,
+      host: monitor.host ?? undefined,
+      port: monitor.port ?? undefined,
+    }, monitor.timeoutMs);
     const measurement = await prisma.measurement.create({
       data: {
         monitorId,
