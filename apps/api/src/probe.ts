@@ -1,7 +1,8 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { IncomingMessage } from "node:http";
-import { validateHttpTarget } from "./target.js";
+import { isIP } from "node:net";
+import { pinnedLookup, validateHttpTarget } from "./target.js";
 import { config } from "./config.js";
 import type { ResolveTarget } from "./target.js";
 import type { ProbeResult } from "./probe-types.js";
@@ -48,8 +49,8 @@ async function requestValidatedUrl(
   timeoutMs: number,
 ) {
   const url = new URL(target.url);
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const request = url.protocol === "https:" ? httpsRequest : httpRequest;
-  const family = target.address.includes(":") ? 6 : 4;
 
   return new Promise<{ statusCode: number; tooLarge: boolean }>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -57,14 +58,14 @@ async function requestValidatedUrl(
     }, timeoutMs);
     const client = request({
       protocol: url.protocol,
-      hostname: url.hostname,
+      hostname,
       port: url.port || undefined,
       path: `${url.pathname}${url.search}`,
       method: "GET",
       headers: { host: url.host },
-      servername: url.hostname,
+      servername: isIP(hostname) ? undefined : hostname,
       timeout: timeoutMs,
-      lookup: (_hostname, _options, callback) => callback(null, target.address, family),
+      lookup: pinnedLookup(target.address),
     }, (response) => {
       consumeResponse(response, timeoutMs).then(resolve, reject);
     });

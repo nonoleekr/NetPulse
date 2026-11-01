@@ -1,8 +1,15 @@
 import { createServer } from "node:http";
-import { expect, test } from "@playwright/test";
+import { createServer as createHttpsServer } from "node:https";
+import { readFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
 
 let fixture: ReturnType<typeof createServer>;
+let tlsFixture: ReturnType<typeof createHttpsServer>;
 let fixtureUrl = "";
+let tlsFixtureUrl = "";
+
+const certificate = readFileSync("apps/api/test-fixtures/localhost-cert.pem");
+const privateKey = readFileSync("apps/api/test-fixtures/localhost-key.pem");
 
 test.beforeAll(async () => {
   fixture = createServer((_request, response) => {
@@ -13,11 +20,26 @@ test.beforeAll(async () => {
   const address = fixture.address();
   if (!address || typeof address === "string") throw new Error("Fixture did not start");
   fixtureUrl = `http://127.0.0.1:${address.port}/`;
+  tlsFixture = createHttpsServer({ cert: certificate, key: privateKey }, (_request, response) => response.end("deterministic TLS fixture"));
+  await new Promise<void>((resolve) => tlsFixture.listen(0, "127.0.0.1", resolve));
+  const tlsAddress = tlsFixture.address();
+  if (!tlsAddress || typeof tlsAddress === "string") throw new Error("TLS fixture did not start");
+  tlsFixtureUrl = `https://127.0.0.1:${tlsAddress.port}/`;
 });
 
 test.afterAll(async () => {
-  await new Promise<void>((resolve, reject) => fixture.close((error) => error ? reject(error) : resolve()));
+  await Promise.all([fixture, tlsFixture].map((server) => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+    server.closeAllConnections();
+  })));
 });
+
+async function deleteMonitor(page: Page, name: string) {
+  const card = page.locator(".card").filter({ hasText: name });
+  page.once("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: "Delete" }).click();
+  await expect(card).toHaveCount(0);
+}
 
 test("creates a real local HTTP monitor and shows its measurement", async ({ page }) => {
   await page.goto("/");
@@ -30,6 +52,7 @@ test("creates a real local HTTP monitor and shows its measurement", async ({ pag
   await expect(card).toContainText("Up", { timeout: 10_000 });
   await expect(card).toContainText("latest response");
   await expect(card).toContainText("sampled availability");
+  await deleteMonitor(page, "Playwright fixture");
 });
 
 test("pauses, resumes, and deletes a monitor with confirmation", async ({ page }) => {
@@ -48,4 +71,40 @@ test("pauses, resumes, and deletes a monitor with confirmation", async ({ page }
   page.once("dialog", (dialog) => dialog.accept());
   await card.getByRole("button", { name: "Delete" }).click();
   await expect(card).toHaveCount(0);
+});
+
+test("runs a real local HTTP diagnostic and displays measured phases", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Monitor name").fill("Diagnostic HTTP fixture");
+  await page.getByLabel("HTTP URL").fill(fixtureUrl);
+  await page.getByRole("button", { name: "Start monitoring" }).click();
+  await expect(page.locator(".card").filter({ hasText: "Diagnostic HTTP fixture" })).toBeVisible();
+
+  await page.getByLabel("Diagnostic monitor").selectOption({ label: "Diagnostic HTTP fixture" });
+  await page.getByRole("button", { name: "Inspect HTTP" }).click();
+  const result = page.locator(".diagnostic-result");
+  await expect(result).toContainText("HTTP · COMPLETED");
+  await expect(result).toContainText("HTTP/1.1 200");
+  await expect(result).toContainText("DNS");
+  await expect(result).toContainText("first byte");
+  await expect(result).toContainText(fixtureUrl);
+  await deleteMonitor(page, "Diagnostic HTTP fixture");
+});
+
+test("displays TLS trust, hostname, validity, and timing results", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Monitor name").fill("Diagnostic TLS fixture");
+  await page.getByLabel("HTTP URL").fill(tlsFixtureUrl);
+  await page.getByRole("button", { name: "Start monitoring" }).click();
+  await expect(page.locator(".card").filter({ hasText: "Diagnostic TLS fixture" })).toBeVisible();
+
+  await page.getByLabel("Diagnostic monitor").selectOption({ label: "Diagnostic TLS fixture" });
+  await page.getByRole("button", { name: "Inspect TLS" }).click();
+  const result = page.locator(".diagnostic-result");
+  await expect(result).toContainText("TLS · COMPLETED");
+  await expect(result).toContainText("not trusted");
+  await expect(result).toContainText("hostname matches");
+  await expect(result).toContainText("certificate valid");
+  await expect(result).toContainText("handshake");
+  await deleteMonitor(page, "Diagnostic TLS fixture");
 });

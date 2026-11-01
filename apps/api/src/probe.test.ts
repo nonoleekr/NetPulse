@@ -67,4 +67,11 @@ describe("HTTP probe", () => {
     const result = await probeHttp("https://slow-dns.example", 20, validate);
     expect(result).toMatchObject({ success: false, errorCode: "TIMEOUT" });
   });
+
+  it("uses the pinned address for a hostname under Node all-address lookup", async () => {
+    const localUrl = await startServer((_request, response) => response.end("pinned fixture"));
+    const url = localUrl.replace("127.0.0.1", "fixture.test");
+    const result = await probeHttp(url, 1000, async (target) => ({ url: target, address: "127.0.0.1" }));
+    expect(result).toMatchObject({ success: true, statusCode: 200 });
+  });
 });

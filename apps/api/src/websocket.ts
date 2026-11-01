@@ -76,10 +76,10 @@ export function createWebSocketServer(server: HttpServer) {
     close() {
       server.off("upgrade", handleUpgrade);
       measurementEvents.off("event", broadcastMeasurement);
-      for (const client of clients) client.close(1001, "Server shutting down");
+      for (const client of clients) client.terminate();
       clients.clear();
       clearInterval(heartbeat);
-      websocketServer.close();
+      return new Promise<void>((resolve) => websocketServer.close(() => resolve()));
     },
   };
 }

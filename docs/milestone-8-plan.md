@@ -17,6 +17,11 @@ AI-generated decisions, or distributed agents yet.
 3. **TLS and HTTP diagnostics**
    - Add certificate expiry and connection timing diagnostics for HTTPS targets.
    - Reuse the existing validated target and redirect policy.
+   - Completed in Milestone 8.2 with address pinning, per-redirect validation,
+     bounded response reads, and deterministic coverage.
+   - Acceptance verification covers certificate validity, trust and hostname
+     matching; DNS/TCP/TLS/TTFB/total timing; SSRF and DNS rebinding defenses;
+     cancellation and cleanup; and real local dashboard workflows.
 4. **Agent boundary**
    - Define a signed, least-privilege agent protocol and capability registry.
    - Keep the local API as the only supported coordinator until authentication,

@@ -21,6 +21,8 @@
 - [x] Security limitations and localhost defaults are documented.
 - [x] Backup and restore commands are documented.
 - [x] Changelog and recommended version are present.
+- [x] GitHub release documents source-only installation; no binary or published
+  container artifact is attached.
 - [x] MIT license added for the local-first portfolio release.
 
 ## Approval gates

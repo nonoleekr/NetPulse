@@ -16,17 +16,24 @@ const environment = {
   NODE_ENV: "test",
   NETPULSE_ALLOW_LOCAL_TARGETS: "true",
 };
+const migrationEnvironment = {
+  ...environment,
+  // Prisma's Windows schema engine can exit with a generic startup error under
+  // warning-only logging in this harness. Info logging avoids that intermittent
+  // failure and remains scoped to the isolated migration process.
+  RUST_LOG: "info",
+};
 
 const migration = process.platform === "win32"
   ? spawnSync(
       process.env.ComSpec ?? "cmd.exe",
       ["/d", "/s", "/c", "npx prisma migrate deploy --config apps/api/prisma.config.ts"],
-      { env: environment, stdio: "inherit" },
+      { env: migrationEnvironment, stdio: "inherit" },
     )
   : spawnSync(
       "npx",
       ["prisma", "migrate", "deploy", "--config", "apps/api/prisma.config.ts"],
-      { env: environment, stdio: "inherit" },
+      { env: migrationEnvironment, stdio: "inherit" },
     );
 if (migration.error) {
   console.error("Unable to run Prisma migrations:", migration.error);
