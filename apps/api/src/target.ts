@@ -86,9 +86,10 @@ export async function validateHttpTarget(
     throw new Error("Target URL is too long");
   }
 
-  const addresses = isIP(url.hostname)
-    ? [{ address: url.hostname, family: url.hostname.includes(":") ? 6 : 4 }]
-    : await resolve(url.hostname, { all: true, verbatim: true });
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const addresses = isIP(hostname)
+    ? [{ address: hostname, family: hostname.includes(":") ? 6 : 4 }]
+    : await resolve(hostname, { all: true, verbatim: true });
   if (!addresses.length) throw new Error("Target hostname did not resolve");
   const onlyLocal = addresses.every(({ address }) => localAddresses.has(address));
   if (onlyLocal && config.allowLocalTargets) return { url: url.toString(), address: addresses[0].address };
