@@ -25,5 +25,13 @@ describe("health", () => {
       expect(response.body.error.code).toBe("NOT_FOUND");
       expect(response.headers["x-request-id"]).toBeTruthy();
     });
+
+    it("rejects diagnostic requests with an unknown kind", async () => {
+      const response = await request(app)
+        .post("/api/monitors/monitor-1/diagnostics")
+        .send({ kind: "PORT_SCAN" });
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    });
   });
 });

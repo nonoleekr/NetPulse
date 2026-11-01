@@ -29,4 +29,6 @@ All notable changes to NetPulse are documented here.
   coverage is included.
 
 This release is for local installation and trusted-host Docker use only.
+The GitHub release is source-only: no binary or published container image is
+provided; Docker images are built locally from the tagged source.
 Unauthenticated public deployment is unsupported.

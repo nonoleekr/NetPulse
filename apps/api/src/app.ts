@@ -9,6 +9,7 @@ import { emitMonitoringEvent } from "./measurement-events.js";
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { logger } from "./logger.js";
+import { runDiagnostic } from "./diagnostics.js";
 
 const commonInput = {
   name: z.string().trim().min(1).max(80),
@@ -76,6 +77,27 @@ app.use(express.json({ limit: "16kb" }));
 app.get("/api/health", async (_request, response) => {
   await prisma.$queryRaw`SELECT 1`;
   response.json({ data: { status: "ok" } });
+});
+
+app.get("/api/monitors/:id/diagnostics", async (request, response) => {
+  const data = await prisma.diagnosticRun.findMany({ where: { monitorId: request.params.id }, orderBy: { startedAt: "desc" }, take: 20 });
+  response.json({ data: data.map((run) => ({ ...run, result: run.resultJson ? JSON.parse(run.resultJson) : null })) });
+});
+
+app.post("/api/monitors/:id/diagnostics", async (request, response) => {
+  const parsed = z.object({ kind: z.enum(["DNS", "ROUTE"]) }).safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "kind must be DNS or ROUTE" } });
+    return;
+  }
+  const controller = new AbortController();
+  request.once("aborted", () => controller.abort());
+  try {
+    const data = await runDiagnostic(request.params.id, parsed.data.kind, controller.signal);
+    response.status(data.status === "COMPLETED" ? 201 : 200).json({ data });
+  } catch (error) {
+    response.status(404).json({ error: { code: "DIAGNOSTIC_FAILED", message: error instanceof Error ? error.message : "Diagnostic failed" } });
+  }
 });
 
 app.get("/api/monitors", async (_request, response) => {
