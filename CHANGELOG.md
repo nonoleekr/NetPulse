@@ -2,7 +2,7 @@
 
 All notable changes to NetPulse are documented here.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-01
 
 ### Added
 
@@ -23,6 +23,10 @@ All notable changes to NetPulse are documented here.
   Internet exposure.
 - ICMP behavior depends on platform permissions; containers do not receive
   privileged ICMP access by default.
-- The Prisma/deepmerge-ts production dependency advisory remains a release
-  blocker until a compatible upgrade is validated.
-- Browser component and Playwright end-to-end tests are not configured.
+- Prisma 7.10.1 with the better-sqlite3 adapter is required; existing migration
+  history is preserved, but back up valuable databases before upgrading.
+- Browser component tests are not included; deterministic Playwright workflow
+  coverage is included.
+
+This release is for local installation and trusted-host Docker use only.
+Unauthenticated public deployment is unsupported.

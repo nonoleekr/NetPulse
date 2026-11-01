@@ -21,12 +21,12 @@
 - [x] Security limitations and localhost defaults are documented.
 - [x] Backup and restore commands are documented.
 - [x] Changelog and recommended version are present.
-- [ ] A software license is selected and added by the project owner.
+- [x] MIT license added for the local-first portfolio release.
 
 ## Approval gates
 
 - [x] Resolve the Prisma/deepmerge-ts High advisory with Prisma 7.10.1 and
   compatibility-tested SQLite adapter changes.
-- [ ] Confirm intended software license.
+- [x] MIT license selected for this release.
 - [ ] Review Docker permissions and exposed ports for the intended host.
 - [ ] Explicitly approve any tag, GitHub Release, image publication, or deploy.

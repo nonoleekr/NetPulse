@@ -29,6 +29,17 @@ NetPulse is designed for:
 
 It is currently a single-user application intended to run on `localhost`. It does not provide hosted monitoring or remote agents.
 
+## Portfolio evidence
+
+These screenshots were captured from the running application using isolated
+local HTTP and TCP fixtures plus Windows ICMP loopback monitoring. They show
+real persisted measurements, compact latency charts, and a controlled outage
+history; no simulated dashboard data was used.
+
+![NetPulse dashboard with HTTP, TCP, and ICMP monitors](./docs/screenshots/netpulse-dashboard.png)
+
+![NetPulse outage history after controlled fixture failures](./docs/screenshots/netpulse-outage-history.png)
+
 ## Planned Features
 
 The long-term vision is a practical network monitoring dashboard with multiple probe types, historical analysis, outage detection, and real-time updates.
@@ -443,6 +454,9 @@ vulnerabilities.
 - **ICMP shows `UNSUPPORTED` or `PERMISSION`:** verify that `ping.exe` is available and permitted by Windows security policy.
 - **A local fixture is blocked:** set `NODE_ENV=development` and `NETPULSE_ALLOW_LOCAL_TARGETS=true`; this override is intentionally not accepted in production.
 
-## License
+## License and release scope
 
-No license has been selected yet. Add a license before distributing NetPulse as an open-source project.
+NetPulse is released under the [MIT License](./LICENSE). Version `v0.1.0` is
+for local installation and trusted-host Docker use only. The application has
+no authentication or TLS and must not be exposed directly to the public
+Internet.
