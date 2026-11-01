@@ -9,6 +9,13 @@ The application is suitable for local development and local Docker use only;
 public release remains blocked by the absence of authentication, TLS, and
 public-deployment controls.
 
+## v0.1.0 release format
+
+`v0.1.0` is a source-based GitHub release. It does not include a separately
+uploaded binary or a published container image. Install it by cloning the
+repository and following either the Windows development setup or the Docker
+Compose setup below; Docker builds the images locally from the tagged source.
+
 ## Project Overview
 
 NetPulse is a portfolio project for measuring network reachability from a local Windows machine. It periodically performs real HTTP, TCP, or ICMP checks against configured targets, records whether each probe succeeded, measures latency, and keeps the results in a local SQLite database.
@@ -265,7 +272,16 @@ npm run dev:web
 
 ### Docker Compose deployment
 
-Install Docker Desktop with the Linux container engine enabled, then run:
+Install Docker Desktop with the Linux container engine enabled, clone the
+repository, and check out the release tag:
+
+```powershell
+git clone https://github.com/nonoleekr/NetPulse.git
+Set-Location NetPulse
+git checkout v0.1.0
+```
+
+Then configure and build the local images:
 
 ```powershell
 Copy-Item .env.example .env
@@ -368,8 +384,9 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] Installation, backup/restore, changelog, and release checklist documentation
   - [x] MIT license and local-only `v0.1.0` GitHub release
 - [ ] **Milestone 8 — Advanced diagnostics foundation**
-  - [ ] Typed diagnostic results and bounded execution contracts
-  - [ ] Safe DNS, route, TLS, and HTTP diagnostics
+  - [x] Milestone 8.1: typed, persisted DNS and Windows-first route diagnostics
+  - [x] Bounded execution, cancellation, output limits, and platform capability reporting
+  - [ ] Safe TLS and HTTP diagnostics
   - [ ] Least-privilege authenticated agent protocol design
   - [ ] Evidence-first analysis exports before any AI assistance
 - [ ] **Future — Alerts and scale**

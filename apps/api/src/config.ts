@@ -21,4 +21,7 @@ export const config = {
   outageFailureThreshold: boundedNumber(process.env.OUTAGE_FAILURE_THRESHOLD, 3, 2, 10),
   apiRateLimit: boundedNumber(process.env.API_RATE_LIMIT, 120, 10, 1000),
   apiRateWindowMs: 60_000,
+  maxDiagnostics: boundedNumber(process.env.MAX_DIAGNOSTICS, 2, 1, 10),
+  diagnosticTimeoutMs: boundedNumber(process.env.DIAGNOSTIC_TIMEOUT_MS, 10000, 1000, 30000),
+  diagnosticMaxHops: boundedNumber(process.env.DIAGNOSTIC_MAX_HOPS, 12, 1, 30),
 };

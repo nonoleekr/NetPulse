@@ -40,6 +40,17 @@ type History = {
   failedProbes: number;
   outageCount: number;
 };
+type Diagnostic = {
+  id: string;
+  kind: "DNS" | "ROUTE";
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  capability: string;
+  result: { kind: "DNS"; hostname: string; records: { A: string[]; AAAA: string[] }; recordStatus: { A: string; AAAA: string } } | { kind: "ROUTE"; hops: { hop: number; address: string | null; latencyMs: number | null; responsive: boolean }[]; platform: string } | null;
+  errorMessage: string | null;
+};
 
 const isViteDevelopment = window.location.port === "5173";
 const api = isViteDevelopment ? "http://localhost:4000/api" : "/api";
@@ -79,6 +90,10 @@ function App() {
   const [historyHours, setHistoryHours] = useState("24");
   const [history, setHistory] = useState<Record<string, History>>({});
   const [historyError, setHistoryError] = useState("");
+  const [diagnosticMonitorId, setDiagnosticMonitorId] = useState("");
+  const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticError, setDiagnosticError] = useState("");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const socket = useRef<WebSocket | undefined>(undefined);
   const reconnectAttempt = useRef(0);
@@ -106,6 +121,22 @@ function App() {
       setHistoryError(loadError instanceof Error ? loadError.message : "Could not load history.");
     }
   };
+  async function runDiagnostic(kind: "DNS" | "ROUTE") {
+    if (!diagnosticMonitorId) return;
+    setDiagnosticLoading(true);
+    setDiagnosticError("");
+    try {
+      setDiagnostic(await request<Diagnostic>(`/monitors/${diagnosticMonitorId}/diagnostics`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind }),
+      }));
+    } catch (diagnosticRequestError) {
+      setDiagnosticError(diagnosticRequestError instanceof Error ? diagnosticRequestError.message : "Diagnostic failed.");
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -234,6 +265,16 @@ function App() {
         <button type="submit" disabled={submitting}>{submitting ? "Starting…" : "Start monitoring"}</button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
+    </section>
+    <section className="panel diagnostics" aria-labelledby="diagnostics-heading">
+      <div className="section-heading"><div><p className="section-kicker">On-demand analysis</p><h2 id="diagnostics-heading">Diagnostics</h2></div><span className="panel-note">Bounded and user initiated</span></div>
+      <div className="diagnostic-controls">
+        <label>Monitor<select aria-label="Diagnostic monitor" value={diagnosticMonitorId} onChange={(event) => setDiagnosticMonitorId(event.target.value)}><option value="">Select a monitor</option>{monitors.map((monitor) => <option key={monitor.id} value={monitor.id}>{monitor.name}</option>)}</select></label>
+        <button type="button" disabled={!diagnosticMonitorId || diagnosticLoading} onClick={() => void runDiagnostic("DNS")}>{diagnosticLoading ? "Running…" : "Resolve DNS"}</button>
+        <button type="button" className="secondary" disabled={!diagnosticMonitorId || diagnosticLoading} onClick={() => void runDiagnostic("ROUTE")}>Trace route</button>
+      </div>
+      {diagnosticError && <p className="error" role="alert">{diagnosticError}</p>}
+      {diagnostic && <div className="diagnostic-result" role="status"><strong>{diagnostic.kind} · {diagnostic.status}</strong><span>{new Date(diagnostic.startedAt).toLocaleString()} · {diagnostic.durationMs ?? "—"} ms</span>{diagnostic.result?.kind === "DNS" && <><span>A: {diagnostic.result.records.A.join(", ") || "No records"} ({diagnostic.result.recordStatus.A.toLowerCase()})</span><span>AAAA: {diagnostic.result.records.AAAA.join(", ") || "No records"} ({diagnostic.result.recordStatus.AAAA.toLowerCase()})</span></>}{diagnostic.result?.kind === "ROUTE" && <span>{diagnostic.result.platform}: {diagnostic.result.hops.length} hops reported</span>}{diagnostic.errorMessage && <span className="error">{diagnostic.errorMessage}</span>}</div>}
     </section>
     <div className="content-heading"><div><p className="section-kicker">Fleet view</p><h2>Monitors</h2></div><span className="muted">{monitors.length} configured</span></div>
     <section className="grid" aria-live="polite">

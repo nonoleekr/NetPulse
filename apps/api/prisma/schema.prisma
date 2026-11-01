@@ -21,6 +21,7 @@ model Monitor {
   updatedAt       DateTime      @updatedAt
   measurements    Measurement[]
   outages         Outage[]
+  diagnostics     DiagnosticRun[]
 }
 
 model Measurement {
@@ -46,6 +47,23 @@ model Outage {
   failureCount Int
   reason      String?
   monitor     Monitor   @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, startedAt])
+}
+
+model DiagnosticRun {
+  id           String   @id @default(cuid())
+  monitorId    String
+  kind         String
+  status       String
+  startedAt    DateTime
+  completedAt  DateTime?
+  durationMs   Int?
+  capability   String
+  resultJson   String?
+  errorCode    String?
+  errorMessage String?
+  monitor      Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([monitorId, startedAt])
 }
