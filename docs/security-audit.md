@@ -93,3 +93,11 @@ explicit local-fixture opt-in, SQLite, and a single-user trust model. Public
 hosting is out of scope until authentication, TLS/reverse-proxy controls,
 dependency remediation, stronger abuse prevention, operational monitoring,
 and browser/E2E coverage are implemented and independently reviewed.
+
+## Milestone 8.3 agent boundary addendum
+
+Milestone 8.3 introduces a deliberately loopback-only remote-execution prototype. Agent administrative routes require `NETPULSE_ADMIN_TOKEN`; general monitor routes remain unauthenticated and therefore remain localhost-only. Enrollment secrets are generated with a cryptographic RNG, stored only as SHA-256 hashes, expire quickly, and are atomically consumed once. Each agent creates its own Ed25519 key pair; only its public key and fingerprint are stored by the coordinator.
+
+WebSocket authentication signs a fresh coordinator nonce plus agent identity and timestamp. The coordinator rejects stale signatures, inactive identities, oversized payloads, unsupported capabilities, stale session generations, expired tasks, and duplicate task results. A newer authenticated session replaces the older session. Agent probes independently re-resolve and validate targets, pin HTTP/TCP connections to the validated address, use argument-array ICMP invocation, and enforce timeouts and concurrency bounds.
+
+Cross-device transport is not approved in this milestone. Both enrollment and agent WebSocket upgrades require a loopback peer, and the agent accepts only a loopback `http://` coordinator. This is a security control, not a deployment inconvenience: TLS certificate policy and broader coordinator authentication have not been implemented or verified. Do not use port forwarding, proxies, address rewriting, or modified builds to bypass it.

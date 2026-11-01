@@ -1,8 +1,7 @@
 # Milestone 8: Advanced Diagnostics Foundation
 
-Milestone 8 begins after the local-only `v0.1.0` release. The first slice is
-deliberately diagnostic and deterministic; it does not add public deployment,
-AI-generated decisions, or distributed agents yet.
+Milestone 8 begins after the local-only `v0.1.0` release. It remains
+deterministic and does not add public deployment or AI-generated decisions.
 
 ## Sequence
 
@@ -23,9 +22,9 @@ AI-generated decisions, or distributed agents yet.
      matching; DNS/TCP/TLS/TTFB/total timing; SSRF and DNS rebinding defenses;
      cancellation and cleanup; and real local dashboard workflows.
 4. **Agent boundary**
-   - Define a signed, least-privilege agent protocol and capability registry.
-   - Keep the local API as the only supported coordinator until authentication,
-     enrollment, and transport security exist.
+   - Completed in Milestone 8.3 as a versioned, signed, least-privilege protocol with a standalone outbound agent and capability registry.
+   - Short-lived hashed enrollment tokens, Ed25519 challenge authentication, credential rotation/revocation, heartbeat state, task correlation, and source attribution are implemented.
+   - The verified scope is loopback only. The coordinator and agent both reject cross-device plaintext traffic; authenticated TLS transport remains a prerequisite for cross-device support.
 5. **Analysis assistance**
    - Export structured diagnostics for human review first.
    - Consider AI-assisted summaries only after privacy, provenance, redaction,

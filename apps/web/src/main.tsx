@@ -10,6 +10,8 @@ type Measurement = {
   statusCode: number | null;
   errorCode: string | null;
   completedAt: string;
+  source?: "LOCAL" | "AGENT";
+  agentId?: string | null;
 };
 type Monitor = {
   id: string;
@@ -26,6 +28,7 @@ type Monitor = {
   sampledAvailabilityPercent: number | null;
   status: "UP" | "DOWN" | "PAUSED" | "UNKNOWN";
   activeOutage: { id: string; startedAt: string; endedAt: string | null; failureCount: number; reason: string | null } | null;
+  agentId: string | null;
 };
 type History = {
   measurements: Measurement[];
@@ -41,6 +44,16 @@ type History = {
   outageCount: number;
 };
 type Diagnostic = DiagnosticRun;
+type Agent = {
+  id: string;
+  name: string;
+  status: "ENROLLED" | "ONLINE" | "OFFLINE" | "SUSPENDED" | "REVOKED";
+  platform: string;
+  version: string;
+  capabilities: Array<"HTTP" | "TCP" | "ICMP">;
+  lastHeartbeatAt: string | null;
+  credentialVersion: number;
+};
 
 const isViteDevelopment = window.location.port === "5173";
 const api = isViteDevelopment ? "http://localhost:4000/api" : "/api";
@@ -84,9 +97,44 @@ function App() {
   const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [diagnosticError, setDiagnosticError] = useState("");
+  const [adminToken, setAdminToken] = useState("");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentError, setAgentError] = useState("");
+  const [enrollmentToken, setEnrollmentToken] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const socket = useRef<WebSocket | undefined>(undefined);
   const reconnectAttempt = useRef(0);
+
+  const adminRequest = <T,>(path: string, init?: RequestInit) => request<T>(path, {
+    ...init,
+    headers: { ...init?.headers, authorization: `Bearer ${adminToken}` },
+  });
+  const loadAgents = async () => {
+    setAgentError("");
+    try { setAgents(await adminRequest<Agent[]>("/admin/agents")); }
+    catch (loadError) { setAgentError(loadError instanceof Error ? loadError.message : "Could not load agents."); }
+  };
+  const createEnrollment = async () => {
+    setAgentBusy(true); setAgentError("");
+    try { setEnrollmentToken(await adminRequest<{ token: string; expiresAt: string }>("/admin/agents/enrollment-tokens", { method: "POST" })); }
+    catch (createError) { setAgentError(createError instanceof Error ? createError.message : "Could not create enrollment token."); }
+    finally { setAgentBusy(false); }
+  };
+  const changeAgent = async (agent: Agent, action: "activate" | "suspend" | "revoke") => {
+    if (action === "revoke" && !window.confirm(`Revoke ${agent.name}? Its assigned monitors will return to local execution.`)) return;
+    setAgentBusy(true); setAgentError("");
+    try { await adminRequest(`/admin/agents/${agent.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }); await loadAgents(); await load(); }
+    catch (changeError) { setAgentError(changeError instanceof Error ? changeError.message : "Could not update agent."); }
+    finally { setAgentBusy(false); }
+  };
+  const assignMonitor = async (agentId: string, monitorId: string) => {
+    if (!monitorId) return;
+    setAgentBusy(true); setAgentError("");
+    try { await adminRequest(`/admin/agents/${agentId}/monitors/${monitorId}`, { method: "PUT" }); await load(); }
+    catch (assignError) { setAgentError(assignError instanceof Error ? assignError.message : "Could not assign monitor."); }
+    finally { setAgentBusy(false); }
+  };
 
   const load = async () => {
     const data = await request<Monitor[]>("/monitors");
@@ -270,6 +318,26 @@ function App() {
       {diagnosticError && <p className="error" role="alert">{diagnosticError}</p>}
       {diagnostic && <div className="diagnostic-result" role="status"><strong>{diagnostic.kind} · {diagnostic.status}</strong><span>{new Date(diagnostic.startedAt).toLocaleString()} · {diagnostic.durationMs ?? "—"} ms</span>{diagnostic.result?.kind === "DNS" && <><span>A: {diagnostic.result.records.A.join(", ") || "No records"} ({diagnostic.result.recordStatus.A.toLowerCase()})</span><span>AAAA: {diagnostic.result.records.AAAA.join(", ") || "No records"} ({diagnostic.result.recordStatus.AAAA.toLowerCase()})</span></>}{diagnostic.result?.kind === "ROUTE" && <span>{diagnostic.result.platform}: {diagnostic.result.hops.length} hops reported</span>}{diagnostic.result?.kind === "HTTP" && <><span>HTTP/{diagnostic.result.httpVersion} {diagnostic.result.statusCode} · {diagnostic.result.redirectCount} redirects</span><span>DNS {diagnostic.result.timings.dnsLookupMs} ms · connect {diagnostic.result.timings.tcpConnectMs} ms · TLS {diagnostic.result.timings.tlsHandshakeMs ?? "—"} ms · first byte {diagnostic.result.timings.timeToFirstByteMs} ms</span><span>{diagnostic.result.finalUrl} · {diagnostic.result.responseBytes} bytes{diagnostic.result.responseTruncated ? " (bounded)" : ""}</span></>}{diagnostic.result?.kind === "TLS" && <><span>{diagnostic.result.protocol ?? "Unknown protocol"} · {diagnostic.result.cipher ?? "Unknown cipher"} · {diagnostic.result.authorized ? "trusted" : `not trusted${diagnostic.result.authorizationError ? ` (${diagnostic.result.authorizationError})` : ""}`}</span><span>{diagnostic.result.hostnameMatched ? "hostname matches" : `hostname mismatch${diagnostic.result.hostnameError ? ` (${diagnostic.result.hostnameError})` : ""}`} · certificate {diagnostic.result.certificate.validityStatus.toLowerCase()}</span><span>{diagnostic.result.certificate.subjectCommonName ?? diagnostic.result.hostname} · expires {new Date(diagnostic.result.certificate.validTo).toLocaleDateString()} ({diagnostic.result.certificate.daysRemaining} days)</span><span>DNS {diagnostic.result.timings.dnsLookupMs} ms · connect {diagnostic.result.timings.tcpConnectMs} ms · handshake {diagnostic.result.timings.tlsHandshakeMs} ms</span></>}{diagnostic.errorMessage && <span className="error">{diagnostic.errorMessage}</span>}</div>}
     </section>
+    <section className="panel agents" aria-labelledby="agents-heading">
+      <div className="section-heading"><div><p className="section-kicker">Remote execution</p><h2 id="agents-heading">Agent management</h2></div><span className="panel-note">Loopback prototype · cross-device disabled</span></div>
+      <div className="agent-admin-controls">
+        <label>Administrator token<input type="password" autoComplete="off" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} placeholder="NETPULSE_ADMIN_TOKEN" /></label>
+        <button type="button" disabled={!adminToken || agentBusy} onClick={() => void loadAgents()}>Load agents</button>
+        <button type="button" className="secondary" disabled={!adminToken || agentBusy} onClick={() => void createEnrollment()}>Create enrollment</button>
+      </div>
+      <p className="muted">The token stays in this browser tab only and is never persisted by the dashboard.</p>
+      {agentError && <p className="error" role="alert">{agentError}</p>}
+      {enrollmentToken && <div className="enrollment-token" role="status"><strong>One-time enrollment token</strong><code>{enrollmentToken.token}</code><span>Expires {new Date(enrollmentToken.expiresAt).toLocaleString()}. It will not be shown again.</span></div>}
+      <div className="agent-grid">
+        {agents.map((agent) => <article className="agent-card" key={agent.id}>
+          <div className="card-top"><div><h3>{agent.name}</h3><p>{agent.platform} · agent {agent.version}</p></div><span className={`pill ${agent.status.toLowerCase()}`}>{agent.status.toLowerCase()}</span></div>
+          <p>{agent.capabilities.join(" · ")} · credential v{agent.credentialVersion}</p>
+          <p className="muted">{agent.lastHeartbeatAt ? `Last heartbeat ${new Date(agent.lastHeartbeatAt).toLocaleString()}` : "No heartbeat received"}</p>
+          <label>Assign compatible monitor<select aria-label={`Assign monitor to ${agent.name}`} defaultValue="" onChange={(event) => void assignMonitor(agent.id, event.target.value)}><option value="">Choose monitor</option>{monitors.filter((monitor) => agent.capabilities.includes(monitor.kind) && monitor.agentId !== agent.id).map((monitor) => <option key={monitor.id} value={monitor.id}>{monitor.name} ({monitor.kind})</option>)}</select></label>
+          <div className="actions">{agent.status === "SUSPENDED" ? <button type="button" className="secondary" disabled={agentBusy} onClick={() => void changeAgent(agent, "activate")}>Activate</button> : <button type="button" className="secondary" disabled={agentBusy || agent.status === "REVOKED"} onClick={() => void changeAgent(agent, "suspend")}>Suspend</button>}<button type="button" className="secondary danger" disabled={agentBusy || agent.status === "REVOKED"} onClick={() => void changeAgent(agent, "revoke")}>Revoke</button></div>
+        </article>)}
+      </div>
+    </section>
     <div className="content-heading"><div><p className="section-kicker">Fleet view</p><h2>Monitors</h2></div><span className="muted">{monitors.length} configured</span></div>
     <section className="grid" aria-live="polite">
       {loading && <div className="empty"><strong>Loading monitors…</strong><span>Connecting to the local API.</span></div>}
@@ -281,7 +349,7 @@ function App() {
         const maximum = Math.max(...points.flatMap((item) => item.latencyMs === null ? [] : [item.latencyMs]), 1);
         return <article className="card" key={monitor.id}>
           <div className="card-top"><div><h3>{monitor.name}</h3><p>{monitor.kind} · {monitor.kind === "TCP" ? `${monitor.host}:${monitor.port}` : monitor.kind === "ICMP" ? monitor.host : monitor.url}</p></div><span className={`pill ${monitor.status.toLowerCase()}`} aria-label={`Monitor status: ${formatStatus(monitor.status)}`}>{formatStatus(monitor.status)}</span></div>
-          <div className="metric"><strong>{latest?.latencyMs ?? "—"}{latest?.latencyMs ? " ms" : ""}</strong><span>{latest ? latest.success ? "latest response" : "latest probe failed" : "awaiting first probe"}</span></div>
+          <div className="metric"><strong>{latest?.latencyMs ?? "—"}{latest?.latencyMs ? " ms" : ""}</strong><span>{latest ? `${latest.success ? "latest response" : "latest probe failed"} · ${latest.source === "AGENT" ? "remote agent" : "local coordinator"}` : "awaiting first probe"}</span></div>
           <div className="stats"><span><strong>{monitorHistory?.sampledAvailabilityPercent ?? monitor.sampledAvailabilityPercent ?? "—"}%</strong>sampled availability</span><span><strong>{monitorHistory?.packetLossPercent ?? monitor.packetLossPercent ?? "—"}%</strong>packet loss</span><span><strong>{monitorHistory?.outageCount ?? 0}</strong>outages</span></div>
           <div className="history-heading"><span>History · {historyHours === "24" ? "24 hours" : historyHours === "720" ? "30 days" : `${historyHours} hours`}</span><label>Window <select value={historyHours} onChange={(e) => setHistoryHours(e.target.value)}><option value="1">1 hour</option><option value="6">6 hours</option><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></label></div>
           {historyError && <p className="error compact" role="alert">{historyError}</p>}

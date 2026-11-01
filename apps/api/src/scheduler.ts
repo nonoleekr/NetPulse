@@ -9,6 +9,7 @@ import type { ProbeTarget } from "./probe-types.js";
 import { updateOutageState } from "./outages.js";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
+import { dispatchAgentProbe } from "./agents.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
 const active = new Set<string>();
@@ -35,6 +36,15 @@ export async function runProbe(
   if (active.has(monitorId)) return null;
   const monitor = await prisma.monitor.findUnique({ where: { id: monitorId } });
   if (!monitor || !monitor.enabled) return null;
+
+  if (monitor.agentId) {
+    active.add(monitorId);
+    try {
+      return await dispatchAgentProbe(monitor);
+    } finally {
+      active.delete(monitorId);
+    }
+  }
 
   active.add(monitorId);
   const startedAt = new Date();

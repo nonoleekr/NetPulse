@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { logger } from "./logger.js";
 import { runDiagnostic } from "./diagnostics.js";
+import { agentRouter } from "./agent-routes.js";
 
 const commonInput = {
   name: z.string().trim().min(1).max(80),
@@ -73,6 +74,7 @@ app.use((request, response, next) => {
 });
 app.use(cors({ origin: config.webOrigin }));
 app.use(express.json({ limit: "16kb" }));
+app.use(agentRouter);
 
 app.get("/api/health", async (_request, response) => {
   await prisma.$queryRaw`SELECT 1`;

@@ -2,12 +2,12 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1 through 7 are implemented on the development branch. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, shows selectable history, and includes local security/operational hardening, Docker packaging, CI verification, and release documentation. Public deployment remains out of scope.
+> **Current status:** Milestones 1 through 8.3 are implemented. NetPulse monitors HTTP(S), TCP, and ICMP targets, provides bounded DNS/route/TLS/HTTP diagnostics, and includes an authenticated loopback agent prototype. Public and cross-device deployment remain out of scope.
 
 Security review status is documented in [`docs/security-audit.md`](./docs/security-audit.md).
 The application is suitable for local development and local Docker use only;
-public release remains blocked by the absence of authentication, TLS, and
-public-deployment controls.
+public release remains blocked by incomplete general API authentication, TLS,
+and public-deployment controls.
 
 ## v0.1.0 release format
 
@@ -34,7 +34,7 @@ NetPulse is designed for:
 - Developers building a small personal or portfolio monitoring tool.
 - Anyone who wants a transparent, local alternative to a hosted monitoring service during development.
 
-It is currently a single-user application intended to run on `localhost`. It does not provide hosted monitoring or remote agents.
+It is currently a single-user application intended to run on `localhost`. Milestone 8.3 adds an authenticated loopback agent prototype; hosted and cross-device monitoring remain unsupported until TLS transport is implemented and verified.
 
 ## Portfolio evidence
 
@@ -60,11 +60,12 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 | Updates | REST is authoritative; WebSocket notifications trigger targeted reloads and reconnect sync | Broader real-time event coverage |
 | Reliability | Per-monitor scheduling, one in-flight probe, and persisted outage transitions | Maintenance windows and alert policies |
 | Operations | Local Windows development workflow | CI, Docker, and deployment documentation |
+| Agents | Authenticated loopback prototype with HTTP/TCP/ICMP capability controls | Verified TLS transport before cross-device use |
 | Notifications | Not available | Alerting and notification channels |
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 7
+## Current Status: Milestone 8.3
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -143,6 +144,13 @@ Milestone 7 adds:
   reproducible release documentation.
 - A recommended `v0.1.0` changelog and release checklist.
 
+Milestone 8.3 adds:
+
+- A standalone TypeScript agent with outbound WebSocket sessions, bounded reconnects, heartbeats, and restricted HTTP/TCP/ICMP tasks.
+- Short-lived, single-use hashed enrollment tokens and unique Ed25519 agent credentials with rotation, suspension, and revocation.
+- Capability-aware monitor assignment, correlated remote results, source attribution, duplicate-session replacement, and stale/duplicate-result rejection.
+- A bearer-protected Agent Management dashboard. Plaintext enrollment and agent transport are accepted on loopback only; cross-device operation is deliberately rejected.
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -176,6 +184,8 @@ flowchart LR
   API --> DB[(SQLite volume)]
   API --> Events[Typed event bus]
   Events --> Gateway
+  Agent[Loopback monitoring agent] -->|Outbound authenticated WebSocket| API
+  Scheduler -->|Capability-scoped tasks| Agent
 ```
 
 In local development, Vite serves the dashboard on port 5173 and the API binds
@@ -269,6 +279,20 @@ To run either process separately:
 npm run dev:api
 npm run dev:web
 ```
+
+### Run the Milestone 8.3 loopback agent prototype
+
+Set a strong `NETPULSE_ADMIN_TOKEN` before starting the API. Enter the same token in the dashboard Agent Management section, select **Create enrollment**, and copy the one-time token. In another terminal:
+
+```powershell
+$env:NETPULSE_COORDINATOR_URL = "http://127.0.0.1:4000"
+$env:NETPULSE_ENROLLMENT_TOKEN = "PASTE_ONE_TIME_TOKEN"
+npm run dev -w apps/agent
+```
+
+After enrollment, remove `NETPULSE_ENROLLMENT_TOKEN`; the agent loads its private credential from `%USERPROFILE%\.netpulse\agent-credentials.json`. The file is created with restrictive permissions where the platform supports them. Do not copy this credential into source control or logs.
+
+This workflow is intentionally local-only. The coordinator rejects non-loopback enrollment and agent WebSocket connections, and the agent rejects non-loopback coordinator URLs. Cross-device instructions are withheld because authenticated TLS transport has not yet been implemented and verified.
 
 ### Docker Compose deployment
 
@@ -387,7 +411,8 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] Milestone 8.1: typed, persisted DNS and Windows-first route diagnostics
   - [x] Bounded execution, cancellation, output limits, and platform capability reporting
   - [x] Milestone 8.2: safe TLS certificate inspection and advanced HTTP diagnostics
-  - [ ] Least-privilege authenticated agent protocol design
+  - [x] Milestone 8.3: least-privilege authenticated loopback agent protocol and management prototype
+  - [ ] Verified TLS transport and deployment authentication before cross-device agents
   - [ ] Evidence-first analysis exports before any AI assistance
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
@@ -439,10 +464,10 @@ npm audit --omit=dev --audit-level=high
 npm audit --audit-level=high
 ```
 
-The current suite includes 57 passing API, configuration, target-validation,
+The current suite includes 61 API and 5 agent tests covering configuration, target-validation,
 HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and
-operational-resilience tests. Four deterministic Playwright workflows cover
-monitor lifecycle plus real local HTTP and TLS diagnostic rendering. The
+operational-resilience behavior plus agent enrollment, authentication, session replacement, result correlation, and SSRF controls. Five deterministic Playwright workflows cover
+monitor lifecycle, real local HTTP and TLS diagnostic rendering, and protected agent enrollment UI. The
 production build creates the API output in `apps/api/dist` and the frontend
 output in `apps/web/dist`.
 
@@ -455,6 +480,8 @@ vulnerabilities.
 
 - Probe behavior depends on the target network: firewalls can block TCP or ICMP even when HTTP works.
 - The application is local-only and has no authentication or multi-user support.
+- Agent administration has a separate bearer-token boundary, but the general monitoring API remains unauthenticated and localhost-only.
+- Agent enrollment and transport are loopback-only in Milestone 8.3. Cross-device use requires a future verified TLS design; do not bypass the address checks.
 - WebSocket notifications are implemented, but REST remains authoritative and is used to recover missed updates.
 - The dashboard history chart is intentionally compact and not a full analytics/charting suite.
 - Sampled availability remains the default probe-based statistic; duration availability begins when a persisted outage is detected.
@@ -488,5 +515,5 @@ vulnerabilities.
 
 NetPulse is released under the [MIT License](./LICENSE). Version `v0.1.0` is
 for local installation and trusted-host Docker use only. The application has
-no authentication or TLS and must not be exposed directly to the public
+no general API authentication or cross-device TLS and must not be exposed directly to the public
 Internet.

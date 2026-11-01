@@ -15,6 +15,7 @@ const environment = {
   WEB_ORIGIN: "http://127.0.0.1:5173",
   NODE_ENV: "test",
   NETPULSE_ALLOW_LOCAL_TARGETS: "true",
+  NETPULSE_ADMIN_TOKEN: "playwright-admin-token",
 };
 const migrationEnvironment = {
   ...environment,

@@ -22,6 +22,11 @@ model Monitor {
   measurements    Measurement[]
   outages         Outage[]
   diagnostics     DiagnosticRun[]
+  agentId          String?
+  agent            Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentTasks       AgentTask[]
+
+  @@index([agentId])
 }
 
 model Measurement {
@@ -34,9 +39,75 @@ model Measurement {
   statusCode  Int?
   errorCode   String?
   errorMessage String?
+  source      String   @default("LOCAL")
+  agentId     String?
+  agentTaskId String?  @unique
+  agentStartedAt DateTime?
   monitor     Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentTask   AgentTask? @relation(fields: [agentTaskId], references: [id], onDelete: SetNull)
 
   @@index([monitorId, completedAt])
+  @@index([agentId, completedAt])
+}
+
+model Agent {
+  id                   String   @id @default(cuid())
+  name                 String
+  status               String   @default("ENROLLED")
+  platform             String
+  version              String
+  capabilitiesJson     String
+  publicKey             String
+  publicKeyFingerprint String
+  credentialVersion    Int      @default(1)
+  sessionGeneration    Int      @default(0)
+  lastHeartbeatAt      DateTime?
+  lastConnectedAt      DateTime?
+  suspendedAt          DateTime?
+  revokedAt            DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  monitors             Monitor[]
+  measurements         Measurement[]
+  tasks                AgentTask[]
+  enrollmentTokens     AgentEnrollmentToken[]
+
+  @@index([status, lastHeartbeatAt])
+}
+
+model AgentEnrollmentToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  purpose   String   @default("ENROLL")
+  agentId   String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt, usedAt])
+}
+
+model AgentTask {
+  id                String   @id @default(cuid())
+  agentId           String
+  monitorId         String
+  sessionGeneration Int
+  kind              String
+  payloadJson       String
+  status            String   @default("DISPATCHED")
+  issuedAt          DateTime @default(now())
+  expiresAt         DateTime
+  completedAt       DateTime?
+  resultHash        String?
+  errorCode         String?
+  agent             Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  monitor           Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  measurement       Measurement?
+
+  @@index([agentId, status, expiresAt])
+  @@index([monitorId, status])
 }
 
 model Outage {

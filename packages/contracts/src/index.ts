@@ -156,3 +156,48 @@ export type DiagnosticRun = {
     errorCode: string | null;
     errorMessage: string | null;
 };
+
+export const agentProtocolVersion = 1 as const;
+export type AgentCapability = "HTTP" | "TCP" | "ICMP";
+export type AgentLifecycleStatus = "ENROLLED" | "ONLINE" | "OFFLINE" | "SUSPENDED" | "REVOKED";
+
+export type AgentIdentity = {
+    id: string;
+    name: string;
+    status: AgentLifecycleStatus;
+    platform: string;
+    version: string;
+    capabilities: AgentCapability[];
+    lastHeartbeatAt: string | null;
+    lastConnectedAt: string | null;
+    credentialVersion: number;
+};
+
+export type AgentProbeTask = {
+    id: string;
+    monitorId: string;
+    sessionGeneration: number;
+    kind: AgentCapability;
+    url: string;
+    host: string | null;
+    port: number | null;
+    timeoutMs: number;
+    issuedAt: string;
+    expiresAt: string;
+};
+
+export type CoordinatorAgentMessage =
+  | { type: "coordinator.challenge"; protocolVersion: 1; nonce: string; issuedAt: string }
+  | { type: "coordinator.authenticated"; protocolVersion: 1; agentId: string; sessionId: string; sessionGeneration: number; heartbeatIntervalMs: number }
+  | { type: "coordinator.task"; protocolVersion: 1; task: AgentProbeTask }
+  | { type: "coordinator.cancel"; protocolVersion: 1; taskId: string; reason: string }
+  | { type: "coordinator.error"; protocolVersion: 1; code: string; message: string };
+
+export type AgentCoordinatorMessage =
+  | { type: "agent.authenticate"; protocolVersion: 1; agentId: string; nonce: string; signedAt: string; signature: string }
+  | { type: "agent.heartbeat"; protocolVersion: 1; agentId: string; sessionId: string; sequence: number; occurredAt: string; health: "OK" | "DEGRADED" }
+  | { type: "agent.result"; protocolVersion: 1; agentId: string; sessionId: string; taskId: string; startedAt: string; completedAt: string; result: { success: boolean; latencyMs: number | null; statusCode?: number; errorCode?: string; errorMessage?: string } };
+
+export function agentAuthenticationPayload(agentId: string, nonce: string, signedAt: string) {
+  return `netpulse-agent-auth-v1\n${agentId}\n${nonce}\n${signedAt}`;
+}

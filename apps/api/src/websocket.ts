@@ -31,7 +31,8 @@ export function createWebSocketServer(server: HttpServer) {
   }, 30_000);
 
   const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-    if (request.url !== "/ws" || !isAllowedOrigin(request)) {
+    if (request.url !== "/ws") return;
+    if (!isAllowedOrigin(request)) {
       socket.destroy();
       return;
     }
