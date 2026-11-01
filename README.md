@@ -366,12 +366,15 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] Multi-stage Docker and Compose packaging with persistent SQLite storage
   - [x] CI Docker-build, audit, test, lint, migration, and production-build checks
   - [x] Installation, backup/restore, changelog, and release checklist documentation
-  - [ ] Approve a software license
-- [ ] **Future — Browser verification**
-  - [ ] Browser end-to-end workflow
+  - [x] MIT license and local-only `v0.1.0` GitHub release
+- [ ] **Milestone 8 — Advanced diagnostics foundation**
+  - [ ] Typed diagnostic results and bounded execution contracts
+  - [ ] Safe DNS, route, TLS, and HTTP diagnostics
+  - [ ] Least-privilege authenticated agent protocol design
+  - [ ] Evidence-first analysis exports before any AI assistance
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
-  - [ ] Remote probe agents and multi-region monitoring
+  - [ ] Multi-region monitoring after authenticated agent enrollment
   - [ ] Larger-scale storage and authenticated deployments
 
 ## Project Structure
