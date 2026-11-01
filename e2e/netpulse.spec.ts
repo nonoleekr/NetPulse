@@ -29,8 +29,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await Promise.all([fixture, tlsFixture].map((server) => new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
     server.closeAllConnections();
+    server.close((error) => error ? reject(error) : resolve());
   })));
 });
 
@@ -107,4 +107,22 @@ test("displays TLS trust, hostname, validity, and timing results", async ({ page
   await expect(result).toContainText("certificate valid");
   await expect(result).toContainText("handshake");
   await deleteMonitor(page, "Diagnostic TLS fixture");
+});
+
+test("protects agent management and displays one-time enrollment", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agent management" })).toBeVisible();
+  await expect(page.getByText("Loopback prototype · cross-device disabled")).toBeVisible();
+
+  await page.getByLabel("Administrator token").fill("wrong-token");
+  await page.getByRole("button", { name: "Load agents" }).click();
+  await expect(page.getByRole("alert")).toContainText("valid administrator token");
+
+  await page.getByLabel("Administrator token").fill("playwright-admin-token");
+  await page.getByRole("button", { name: "Load agents" }).click();
+  await page.getByRole("button", { name: "Create enrollment" }).click();
+  const enrollment = page.locator(".enrollment-token");
+  await expect(enrollment).toContainText("One-time enrollment token");
+  await expect(enrollment.locator("code")).not.toBeEmpty();
+  await expect(enrollment).toContainText("It will not be shown again");
 });

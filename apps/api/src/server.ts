@@ -4,16 +4,19 @@ import { prisma } from "./db.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 import { createWebSocketServer } from "./websocket.js";
 import { logger } from "./logger.js";
+import { createAgentGateway, reconcileAgentState } from "./agents.js";
 
 const server = app.listen(config.port, config.host, () => {
   logger.info("server.started", { host: config.host, port: config.port });
 });
 const websocket = createWebSocketServer(server);
+const agentGateway = createAgentGateway(server);
 
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   stopScheduler();
+  await agentGateway.close();
   await websocket.close();
   const closed = new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   server.closeAllConnections();
@@ -31,6 +34,7 @@ const handleShutdown = () => {
 };
 
 try {
+  await reconcileAgentState();
   await startScheduler();
 } catch (error) {
   logger.error("server.startup_failed", { error: error instanceof Error ? error.message : "Unknown error" });

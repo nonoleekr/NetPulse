@@ -25,4 +25,11 @@ export const config = {
   diagnosticTimeoutMs: boundedNumber(process.env.DIAGNOSTIC_TIMEOUT_MS, 10000, 1000, 30000),
   diagnosticMaxHops: boundedNumber(process.env.DIAGNOSTIC_MAX_HOPS, 12, 1, 30),
   diagnosticMaxRedirects: boundedNumber(process.env.DIAGNOSTIC_MAX_REDIRECTS, 3, 0, 10),
+  adminToken: process.env.NETPULSE_ADMIN_TOKEN ?? "",
+  enrollmentTtlMs: boundedNumber(process.env.AGENT_ENROLLMENT_TTL_MS, 10 * 60_000, 60_000, 60 * 60_000),
+  agentHeartbeatIntervalMs: boundedNumber(process.env.AGENT_HEARTBEAT_INTERVAL_MS, 15_000, 5_000, 60_000),
+  agentOfflineAfterMs: boundedNumber(process.env.AGENT_OFFLINE_AFTER_MS, 45_000, 15_000, 5 * 60_000),
+  agentTaskTimeoutMs: boundedNumber(process.env.AGENT_TASK_TIMEOUT_MS, 30_000, 1_000, 60_000),
+  maxAgentConnections: boundedNumber(process.env.MAX_AGENT_CONNECTIONS, 25, 1, 500),
+  maxAgentPayloadBytes: boundedNumber(process.env.MAX_AGENT_PAYLOAD_BYTES, 32 * 1024, 1024, 1024 * 1024),
 };

@@ -13,6 +13,12 @@ describe("health", () => {
   });
 
   describe("history validation", () => {
+    it("keeps agent administration disabled without an explicit admin token", async () => {
+      const response = await request(app).get("/api/admin/agents");
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("ADMIN_DISABLED");
+    });
+
     it("rejects unbounded history windows before querying the database", async () => {
       const response = await request(app).get("/api/monitors/monitor-1/history?hours=721");
       expect(response.status).toBe(400);
