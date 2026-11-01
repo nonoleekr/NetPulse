@@ -5,8 +5,8 @@ import { startScheduler, stopScheduler } from "./scheduler.js";
 import { createWebSocketServer } from "./websocket.js";
 import { logger } from "./logger.js";
 
-const server = app.listen(config.port, "127.0.0.1", () => {
-  logger.info("server.started", { port: config.port });
+const server = app.listen(config.port, config.host, () => {
+  logger.info("server.started", { host: config.host, port: config.port });
 });
 const websocket = createWebSocketServer(server);
 

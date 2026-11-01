@@ -1,0 +1,14 @@
+.git
+.github
+.copilot
+node_modules
+**/node_modules
+**/dist
+**/dev.db
+**/*.db
+**/*.db-journal
+coverage
+.env
+.env.*
+!.env.example
+*.log

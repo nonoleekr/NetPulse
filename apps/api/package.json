@@ -9,11 +9,14 @@
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.json",
     "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev --name init"
   },
   "dependencies": {
-    "@prisma/client": "^6.17.1",
     "@netpulse/contracts": "*",
+    "@prisma/adapter-better-sqlite3": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "better-sqlite3": "^12.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
@@ -21,15 +24,16 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.0",
     "@types/supertest": "^6.0.3",
     "@types/ws": "^8.18.1",
-    "prisma": "^6.17.1",
+    "prisma": "^7.10.1",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   }
 }

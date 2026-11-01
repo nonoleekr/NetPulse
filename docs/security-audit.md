@@ -9,9 +9,9 @@ or external target scanning was performed.
 
 **Release assessment:** suitable for local development after the documented
 checks pass; **not approved for public deployment**. There are no known
-Critical vulnerabilities in the reviewed application code. A High-severity
-production dependency advisory remains unresolved because its automated fix
-requires a Prisma 7 major upgrade.
+Critical vulnerabilities in the reviewed application code. The previously
+reported Prisma/deepmerge-ts advisory was remediated by a compatibility-tested
+Prisma 7.10.1 upgrade.
 
 ## Controls reviewed
 
@@ -38,10 +38,10 @@ requires a Prisma 7 major upgrade.
 
 | ID | Severity | Status | Finding |
 | --- | --- | --- | --- |
-| SEC-001 | High | Open release blocker | `npm audit --omit=dev --audit-level=moderate` reports three High advisories through `deepmerge-ts` in the Prisma 6 toolchain. `npm audit fix --force` proposes Prisma 7.10.1, a breaking upgrade that was not applied without compatibility testing. |
+| SEC-001 | High | Remediated | Prisma 6.19.3 pulled `deepmerge-ts@7.1.5` through `@prisma/config`; Prisma 7.10.1 upgrades `deepmerge-ts` to 8.0.2 and `npm audit --omit=dev --audit-level=high` reports zero vulnerabilities. |
 | SEC-002 | Medium | Accepted limitation | The API has no authentication or authorization and is intended to bind to localhost only. A public deployment would allow anyone who can reach the API to create monitors and consume probing resources. |
 | SEC-003 | Medium | Accepted limitation | TLS, reverse-proxy policy, multi-user isolation, and distributed rate limiting are not implemented. Do not expose the development server directly to the Internet. |
-| SEC-004 | Low | Accepted limitation | Browser component and Playwright end-to-end security tests are not configured. API/probe/WebSocket regression tests are deterministic and run in CI. |
+| SEC-004 | Low | Accepted limitation | Browser component security tests are not configured. Deterministic Playwright workflow coverage is present. |
 
 The independent security review found no additional vulnerabilities in the
 reviewed changes. No Critical finding is known.
@@ -71,20 +71,19 @@ The target validator now normalizes hexadecimal IPv4-mapped IPv6 literals
 before applying IPv4 private/reserved-range checks. This closes a bypass form
 without changing the secure default or local fixture policy.
 
-No dependency upgrade was made because the available fix is a Prisma major
-upgrade and requires a separate compatibility milestone.
+Prisma was upgraded to 7.10.1 with the required `prisma-client` generated
+client, `prisma.config.ts`, and `@prisma/adapter-better-sqlite3`. SQLite
+migrations remained unchanged; existing data is preserved by `migrate deploy`.
 
 ## Remaining risks and release blockers
 
-1. **Release blocker:** resolve and retest the Prisma/deepmerge-ts advisory
-   before any public release.
-2. Keep the API bound to `127.0.0.1`, use a firewall, and do not enable local
+1. Keep the API bound to `127.0.0.1`, use a firewall, and do not enable local
    targets in production.
-3. Do not treat the current rate limiter as a substitute for authenticated,
+2. Do not treat the current rate limiter as a substitute for authenticated,
    distributed abuse prevention.
-4. Add browser/E2E coverage and a public deployment threat model before
+3. Add a public deployment threat model before
    hosting outside the local machine.
-5. Continue testing DNS rebinding and redirect behavior with controlled local
+4. Continue testing DNS rebinding and redirect behavior with controlled local
    fixtures only.
 
 ## Local versus public deployment

@@ -8,5 +8,8 @@ dist/
 *.log
 coverage/
 .vite/
+test-results/
+playwright-report/
 apps/api/prisma/dev.db
+apps/api/src/generated/
 *.tsbuildinfo

@@ -41,8 +41,11 @@ type History = {
   outageCount: number;
 };
 
-const api = "http://localhost:4000/api";
-const websocketUrl = "ws://localhost:4000/ws";
+const isViteDevelopment = window.location.port === "5173";
+const api = isViteDevelopment ? "http://localhost:4000/api" : "/api";
+const websocketUrl = isViteDevelopment
+  ? "ws://localhost:4000/ws"
+  : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 type ConnectionStatus = "live" | "reconnecting" | "offline";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
