@@ -14,8 +14,10 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   stopScheduler();
-  websocket.close();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await websocket.close();
+  const closed = new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  server.closeAllConnections();
+  await closed;
   await prisma.$disconnect();
 }
 

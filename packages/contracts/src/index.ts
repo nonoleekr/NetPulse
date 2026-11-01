@@ -50,7 +50,7 @@ export type WebSocketEvent =
       payload: MonitorStatusPayload;
     };
 
-export type DiagnosticKind = "DNS" | "ROUTE";
+export type DiagnosticKind = "DNS" | "ROUTE" | "TLS" | "HTTP";
 export type DiagnosticStatus = "COMPLETED" | "FAILED" | "UNSUPPORTED" | "CANCELLED";
 
 export type DnsDiagnosticResult = {
@@ -82,7 +82,66 @@ export type RouteDiagnosticResult = {
     reachedDestination: boolean;
 };
 
-export type DiagnosticResult = DnsDiagnosticResult | RouteDiagnosticResult;
+export type CertificateSummary = {
+    subjectCommonName: string | null;
+    issuerCommonName: string | null;
+    subjectAltNames: string[];
+    validFrom: string;
+    validTo: string;
+    daysRemaining: number;
+    validityStatus: "VALID" | "EXPIRED" | "NOT_YET_VALID";
+    fingerprint256: string | null;
+    serialNumber: string | null;
+};
+
+export type TlsDiagnosticResult = {
+    kind: "TLS";
+    hostname: string;
+    port: number;
+    authorized: boolean;
+    authorizationError: string | null;
+    hostnameMatched: boolean;
+    hostnameError: string | null;
+    protocol: string | null;
+    cipher: string | null;
+    alpnProtocol: string | null;
+    certificate: CertificateSummary;
+    timings: {
+      dnsLookupMs: number;
+      tcpConnectMs: number;
+      tlsHandshakeMs: number;
+      totalMs: number;
+    };
+};
+
+export type HttpRedirect = {
+    statusCode: number;
+    from: string;
+    to: string;
+};
+
+export type HttpDiagnosticResult = {
+    kind: "HTTP";
+    requestedUrl: string;
+    finalUrl: string;
+    method: "GET";
+    statusCode: number;
+    redirectCount: number;
+    redirects: HttpRedirect[];
+    responseBytes: number;
+    responseTruncated: boolean;
+    httpVersion: string;
+    remoteAddress: string;
+    timings: {
+      dnsLookupMs: number;
+      tcpConnectMs: number;
+      tlsHandshakeMs: number | null;
+      timeToFirstByteMs: number;
+      totalMs: number;
+    };
+};
+
+export type DiagnosticResult = DnsDiagnosticResult | RouteDiagnosticResult | TlsDiagnosticResult | HttpDiagnosticResult;
 
 export type DiagnosticRun = {
     id: string;

@@ -386,7 +386,7 @@ Measurements and completed outages remain in the SQLite database when the API re
 - [ ] **Milestone 8 — Advanced diagnostics foundation**
   - [x] Milestone 8.1: typed, persisted DNS and Windows-first route diagnostics
   - [x] Bounded execution, cancellation, output limits, and platform capability reporting
-  - [ ] Safe TLS and HTTP diagnostics
+  - [x] Milestone 8.2: safe TLS certificate inspection and advanced HTTP diagnostics
   - [ ] Least-privilege authenticated agent protocol design
   - [ ] Evidence-first analysis exports before any AI assistance
 - [ ] **Future — Alerts and scale**
@@ -411,6 +411,9 @@ Measurements and completed outages remain in the SQLite database when the API re
 │   │       ├── tcp-probe.ts      TCP connection probe
 │   │       ├── icmp-probe.ts     System ping integration
 │   │       ├── probe-types.ts    Shared probe result types
+│   │       ├── diagnostics.ts    Persisted on-demand diagnostic orchestration
+│   │       ├── tls-diagnostic.ts Bounded TLS certificate inspection
+│   │       ├── http-diagnostic.ts Redirect-safe HTTP timing diagnostics
 │   │       ├── scheduler.ts      Scheduled monitor execution
 │   │       ├── target.ts         URL, DNS, and SSRF validation
 │   │       └── server.ts         API startup and shutdown
@@ -431,12 +434,17 @@ Run these from the repository root:
 npm test
 npm run lint
 npm run build
+npm run e2e
+npm audit --omit=dev --audit-level=high
+npm audit --audit-level=high
 ```
 
-The current suite includes 35 passing API, configuration, target-validation,
+The current suite includes 57 passing API, configuration, target-validation,
 HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and
-operational-resilience tests. The production build creates the API output in
-`apps/api/dist` and the frontend output in `apps/web/dist`.
+operational-resilience tests. Four deterministic Playwright workflows cover
+monitor lifecycle plus real local HTTP and TLS diagnostic rendering. The
+production build creates the API output in `apps/api/dist` and the frontend
+output in `apps/web/dist`.
 
 The CI workflow runs these checks plus Docker image builds and
 `npm audit --omit=dev --audit-level=high`. Prisma 7 uses the
@@ -451,7 +459,7 @@ vulnerabilities.
 - The dashboard history chart is intentionally compact and not a full analytics/charting suite.
 - Sampled availability remains the default probe-based statistic; duration availability begins when a persisted outage is detected.
 - Outages require the configured consecutive-failure threshold (three by default), so isolated failures do not create outage duration.
-- DNS-specific, UDP, traceroute, TLS-expiry, and browser-journey checks are not implemented.
+- UDP and browser-journey checks are not implemented; TLS and HTTP diagnostics are user-initiated and limited to configured HTTP(S) monitors.
 - Duration-based availability only reflects persisted outages after the failure threshold; it is not a full SLO or maintenance-aware calculation.
 - The scheduler runs in the API process and is not designed for horizontal scaling.
 - SQLite is suitable for this single-user local MVP, not for concurrent multi-instance production monitoring.
@@ -465,6 +473,8 @@ vulnerabilities.
 - The API emits JSON logs with request IDs; `API_RATE_LIMIT` defaults to 120 requests per minute per client address.
 - Startup and shutdown failures are logged as `server.startup_failed` or `server.shutdown_failed`; request failures include the response request ID.
 - For diagnostics, run `npm run dev:api` and query `Invoke-RestMethod http://127.0.0.1:4000/api/health` from PowerShell.
+- HTTP diagnostics revalidate and pin every redirect destination, follow at most three redirects by default, and bound response reads. TLS inspection reports authorization, hostname matching, explicit certificate validity state, expiry, and handshake metadata but does not change scheduled monitor or outage state.
+- Automated TLS tests use a repository-local self-signed certificate and never contact external systems. Revocation checking, OCSP, and full-chain display are not implemented.
 
 ### Troubleshooting
 

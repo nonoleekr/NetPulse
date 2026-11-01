@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { config } from "./config.js";
 
 const localAddresses = new Set(["127.0.0.1", "::1"]);
@@ -8,6 +8,17 @@ type ResolveAll = (
   options: { all: true; verbatim: true },
 ) => Promise<Array<{ address: string; family: number }>>;
 export type ResolveTarget = (rawUrl: string) => Promise<{ url: string; address: string }>;
+
+export function pinnedLookup(address: string): LookupFunction {
+  const family = address.includes(":") ? 6 : 4;
+  return ((_hostname, options, callback) => {
+    if (typeof options === "object" && options.all) {
+      callback(null, [{ address, family }]);
+      return;
+    }
+    callback(null, address, family);
+  }) as LookupFunction;
+}
 
 function ipv4FromMappedIpv6(address: string) {
   const normalized = address.toLowerCase();

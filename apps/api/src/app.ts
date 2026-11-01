@@ -85,9 +85,9 @@ app.get("/api/monitors/:id/diagnostics", async (request, response) => {
 });
 
 app.post("/api/monitors/:id/diagnostics", async (request, response) => {
-  const parsed = z.object({ kind: z.enum(["DNS", "ROUTE"]) }).safeParse(request.body);
+  const parsed = z.object({ kind: z.enum(["DNS", "ROUTE", "TLS", "HTTP"]) }).safeParse(request.body);
   if (!parsed.success) {
-    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "kind must be DNS or ROUTE" } });
+    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "kind must be DNS, ROUTE, TLS, or HTTP" } });
     return;
   }
   const controller = new AbortController();

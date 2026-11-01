@@ -24,4 +24,5 @@ export const config = {
   maxDiagnostics: boundedNumber(process.env.MAX_DIAGNOSTICS, 2, 1, 10),
   diagnosticTimeoutMs: boundedNumber(process.env.DIAGNOSTIC_TIMEOUT_MS, 10000, 1000, 30000),
   diagnosticMaxHops: boundedNumber(process.env.DIAGNOSTIC_MAX_HOPS, 12, 1, 30),
+  diagnosticMaxRedirects: boundedNumber(process.env.DIAGNOSTIC_MAX_REDIRECTS, 3, 0, 10),
 };

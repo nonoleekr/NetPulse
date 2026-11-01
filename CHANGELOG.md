@@ -2,6 +2,22 @@
 
 All notable changes to NetPulse are documented here.
 
+## [Unreleased]
+
+### Added
+
+- On-demand TLS certificate inspection with trust, expiry, protocol, cipher,
+  hostname matching, validity state, and connection timing details for HTTPS
+  monitors.
+- Advanced HTTP diagnostics with DNS, TCP, TLS, first-byte, and total timing;
+  bounded response reads; and SSRF-safe redirect revalidation and address pinning.
+
+### Fixed
+
+- Updated pinned HTTP address lookup for Node runtimes that request all DNS
+  results, preserving DNS-rebinding protection for monitoring and diagnostics.
+- Closed WebSocket and HTTP resources deterministically during API shutdown.
+
 ## [0.1.0] - 2026-11-01
 
 ### Added

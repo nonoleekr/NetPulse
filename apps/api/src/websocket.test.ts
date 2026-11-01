@@ -33,7 +33,7 @@ function waitForMessage(client: WebSocket) {
 
 afterEach(async () => {
   for (const { httpServer, websocket } of activeServers.splice(0)) {
-    websocket.close();
+    await websocket.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   }
 });
