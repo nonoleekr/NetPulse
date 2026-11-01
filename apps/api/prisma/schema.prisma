@@ -20,6 +20,7 @@ model Monitor {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   measurements    Measurement[]
+  outages         Outage[]
 }
 
 model Measurement {
@@ -35,4 +36,16 @@ model Measurement {
   monitor     Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([monitorId, completedAt])
+}
+
+model Outage {
+  id          String    @id @default(cuid())
+  monitorId   String
+  startedAt   DateTime
+  endedAt     DateTime?
+  failureCount Int
+  reason      String?
+  monitor     Monitor   @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, startedAt])
 }

@@ -24,6 +24,7 @@ export async function probeTcp(
   return new Promise((resolve) => {
     let settled = false;
     let socket: Socket | undefined;
+    let sawNonRefusalError = false;
     const finish = (result: ProbeResult) => {
       if (settled) return;
       settled = true;
@@ -43,8 +44,8 @@ export async function probeTcp(
         finish({
           success: false,
           latencyMs: null,
-          errorCode: "REFUSED",
-          errorMessage: "The TCP connection was refused",
+          errorCode: sawNonRefusalError ? "NETWORK_ERROR" : "REFUSED",
+          errorMessage: sawNonRefusalError ? "The TCP connection failed" : "The TCP connection was refused",
         });
         return;
       }
@@ -57,7 +58,8 @@ export async function probeTcp(
           latencyMs: Math.max(0, Math.round(performance.now() - started)),
         });
       });
-      socket.once("error", () => {
+      socket.once("error", (error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ECONNREFUSED") sawNonRefusalError = true;
         socket?.destroy();
         connectNext(index + 1);
       });

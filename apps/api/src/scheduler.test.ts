@@ -14,6 +14,8 @@ vi.mock("./db.js", () => ({
       findUnique: vi.fn().mockResolvedValue(monitor),
     },
     measurement: {
+      findMany: vi.fn().mockResolvedValue([{ success: true }]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       create: vi.fn().mockImplementation(async () => {
         persisted.value = true;
         return {
@@ -28,6 +30,12 @@ vi.mock("./db.js", () => ({
           errorMessage: null,
         };
       }),
+    },
+    outage: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   },
 }));
@@ -54,5 +62,36 @@ describe("measurement persistence and events", () => {
 
     measurementEvents.off("measurement.completed", listener);
     expect(observedPersisted).toBe(true);
+  });
+
+  it("prunes measurements and only closed outages", async () => {
+    const { pruneHistory } = await import("./scheduler.js");
+    const now = new Date("2026-11-30T00:00:00.000Z");
+    await pruneHistory(now);
+    const { prisma } = await import("./db.js");
+    expect(prisma.measurement.deleteMany).toHaveBeenCalledWith({
+      where: { completedAt: { lt: new Date("2026-10-31T00:00:00.000Z") } },
+    });
+    expect(prisma.outage.deleteMany).toHaveBeenCalledWith({
+      where: { endedAt: { not: null, lt: new Date("2026-10-31T00:00:00.000Z") } },
+    });
+  });
+
+  it("does not persist a completed probe after its monitor is deleted", async () => {
+    const { prisma } = await import("./db.js");
+    const { runProbe } = await import("./scheduler.js");
+    vi.mocked(prisma.monitor.findUnique)
+      .mockResolvedValueOnce(monitor as never)
+      .mockResolvedValueOnce(null);
+    const createCalls = vi.mocked(prisma.measurement.create).mock.calls.length;
+
+    const result = await runProbe(monitor.id, async () => ({
+      success: true,
+      latencyMs: 10,
+      statusCode: 200,
+    }));
+
+    expect(result).toBeNull();
+    expect(prisma.measurement.create).toHaveBeenCalledTimes(createCalls);
   });
 });

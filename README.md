@@ -2,7 +2,12 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1, 2, and 3 are complete. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, and updates the React dashboard through REST plus WebSocket notifications. Alerts and historical charts are planned but not implemented yet.
+> **Current status:** Milestones 1 through 6 are implemented on the development branch. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, shows selectable history, and includes local security/operational hardening plus operational dashboard polish. Alerts, browser E2E, and public deployment hardening remain planned.
+
+Security review status is documented in [`docs/security-audit.md`](./docs/security-audit.md).
+The application is suitable for local development only; public release remains
+blocked by the unresolved Prisma toolchain advisory and the absence of
+authentication, TLS, and public-deployment controls.
 
 ## Project Overview
 
@@ -32,16 +37,16 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 | --- | --- | --- |
 | HTTP monitoring | Real HTTP(S) probes with latency, status, timeout, and response-size limits | More detailed HTTP history and configurable policies |
 | Storage | SQLite via Prisma | Retention jobs and larger-scale storage options |
-| Dashboard | React dashboard with latest result and sampled statistics | Charts, time windows, richer status views |
+| Dashboard | React dashboard with latest result, history windows, and compact measurement charts | Richer analytics and visualizations |
 | Probe types | HTTP(S), TCP connect, and ICMP | Additional probe policies and richer diagnostics |
 | Updates | REST is authoritative; WebSocket notifications trigger targeted reloads and reconnect sync | Broader real-time event coverage |
-| Reliability | Per-monitor scheduling and one in-flight probe | Outage state transitions and recovery tracking |
+| Reliability | Per-monitor scheduling, one in-flight probe, and persisted outage transitions | Maintenance windows and alert policies |
 | Operations | Local Windows development workflow | CI, Docker, and deployment documentation |
 | Notifications | Not available | Alerting and notification channels |
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 3
+## Current Status: Milestone 6
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -83,6 +88,32 @@ Milestone 3 adds:
 - Windows-compatible `ping.exe` arguments and graceful unsupported/permission/unreachable errors.
 - HTTP, TCP, and ICMP monitors sharing the same scheduler, measurement storage, sampled statistics, and WebSocket notifications.
 - Monitor creation fields that change based on the selected probe type.
+
+Milestone 4 adds:
+
+- Selectable 1-hour, 6-hour, 24-hour, 7-day, and 30-day history windows.
+- Historical measurement and outage REST data for each monitor.
+- Compact dashboard history charts showing successful and failed samples.
+- Consecutive-failure outage detection with persisted start, end, failure count, and reason.
+- Duration-based availability when an outage record exists, alongside clearly labeled sampled availability.
+- Configurable bounded retention pruning for old measurements and closed outages.
+- REST history pagination and server-side latency, probe, loss, availability, and outage statistics.
+- WebSocket outage-start, outage-recovery, and monitor-status events after persistence.
+
+Milestone 5 adds:
+
+- Security response headers, strict local-origin CORS, request IDs, bounded JSON bodies, and an in-process API rate limit.
+- Structured JSON request, error, lifecycle, scheduler, and retention logs without logging target credentials or response bodies.
+- Resilient scheduler error isolation, periodic cleanup error handling, WebSocket heartbeat cleanup, and graceful shutdown.
+- GitHub Actions verification for locked dependency installation, migrations, tests, lint, and production builds.
+
+Milestone 6 adds:
+
+- Startup failure handling and safe shutdown of the scheduler, WebSocket server, HTTP server, and Prisma client.
+- A deletion race guard so an in-flight probe cannot persist a measurement after its monitor is removed.
+- Dashboard loading, empty, network-error, disabled-action, and reconnecting states.
+- Pause/resume and delete controls with confirmation, accessible status labels, responsive form/card layouts, keyboard focus states, and reduced-motion support.
+- Clear distinction between live updates, reconnecting, offline, UP, DOWN, PAUSED, and UNKNOWN states.
 
 ## Tech Stack
 
@@ -205,15 +236,21 @@ npm run dev:web
 - **DOWN** means the latest completed probe failed, timed out, was refused, was unreachable, or exceeded the HTTP response-size limit.
 - **WAITING** means no completed measurement is available yet.
 - **Latest latency** is measured for the most recent completed request.
-- **Sampled availability** is the percentage of completed probes that succeeded. It is not duration-based uptime because the current milestone does not measure the length of outages.
+- **Sampled availability** is the percentage of completed probes that succeeded. It is not duration-based uptime.
 - **Packet loss** is the percentage of completed probes that failed.
+- **Duration availability** subtracts persisted outage duration from the selected window; an ongoing outage is bounded at query time.
+- **UP**, **DOWN**, **PAUSED**, and **UNKNOWN** are distinct monitor states. Paused monitors do not run probes or create outage records.
 - A monitor with no completed probes displays `—` rather than treating missing data as downtime.
 
 ### Windows ICMP notes
 
 NetPulse invokes `ping.exe` with an argument array and does not execute a shell command. ICMP availability depends on the local Windows network, firewall, and permissions. A failed or unsupported ICMP probe is stored as a real failed measurement; NetPulse never substitutes simulated latency.
 
-Measurements remain in the SQLite database when the API restarts. The current dashboard summarizes all retained measurements; selectable history windows and retention automation are planned.
+Measurements and completed outages remain in the SQLite database when the API restarts. The dashboard can query a selected history window; retention pruning defaults to 30 days and is bounded to a safe 1-3650 day range.
+
+### History API
+
+`GET /api/monitors/:id/history?hours=24&page=1&pageSize=200` returns bounded measurements, outage records, pagination metadata, and window statistics. `hours` accepts 1-720 and `pageSize` accepts 1-500. API timestamps are UTC ISO-8601 strings and are rendered in the browser's local timezone.
 
 ## Development Roadmap
 
@@ -232,14 +269,23 @@ Measurements remain in the SQLite database when the API restarts. The current da
   - [x] TCP connect probing with configurable ports
   - [x] Windows-aware ICMP probing and capability/error reporting
   - [x] Shared scheduling, persistence, statistics, and WebSocket updates
-- [ ] **Milestone 4 — History and outage analysis**
-  - [ ] Selectable measurement windows and charts
-  - [ ] Consecutive-failure outage detection
-  - [ ] Duration-based availability when outage duration is measured
-  - [ ] Retention management
-- [ ] **Milestone 5 — Operational hardening**
-  - [ ] Additional security headers, rate limits, and structured logging
-  - [ ] CI workflow and browser tests
+- [x] **Milestone 4 — History and outage analysis**
+  - [x] Selectable measurement windows and charts
+  - [x] Consecutive-failure outage detection
+  - [x] Duration-based availability when outage duration is measured
+  - [x] Retention management
+- [x] **Milestone 5 — Security and operational reliability**
+  - [x] Security headers, strict origin policy, request IDs, body limits, and rate limiting
+  - [x] Structured logs, graceful shutdown, scheduler/WebSocket resilience
+  - [x] GitHub Actions checks for migrations, tests, lint, and build
+  - [x] SSRF regression coverage, including hexadecimal IPv4-mapped IPv6 targets
+  - [ ] Resolve the Prisma/deepmerge-ts High dependency advisory before public release
+- [x] **Milestone 6 — Operational polish and reliability**
+  - [x] Startup/shutdown and in-flight deletion reliability
+  - [x] Dashboard loading, error, lifecycle, accessibility, and responsive states
+  - [x] Regression coverage and verified production build
+- [ ] **Future — Operational packaging**
+  - [ ] Browser end-to-end workflow
   - [ ] Optional Docker packaging
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
@@ -285,20 +331,25 @@ npm run lint
 npm run build
 ```
 
-The current suite includes 26 passing API, target-validation, HTTP/TCP/ICMP probe, scheduler-ordering, and WebSocket tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
+The current suite includes 33 passing API, configuration, target-validation, HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and operational-resilience tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
 
 ## Known Limitations
 
 - Probe behavior depends on the target network: firewalls can block TCP or ICMP even when HTTP works.
 - The application is local-only and has no authentication or multi-user support.
 - WebSocket notifications are implemented, but REST remains authoritative and is used to recover missed updates.
-- The dashboard shows the latest measurement and all-retained-measurement summary, not selectable historical charts.
-- Availability is sampled availability, not duration-based uptime.
-- Outage detection, recovery events, and notifications are not implemented.
+- The dashboard history chart is intentionally compact and not a full analytics/charting suite.
+- Sampled availability remains the default probe-based statistic; duration availability begins when a persisted outage is detected.
+- Outages require the configured consecutive-failure threshold (three by default), so isolated failures do not create outage duration.
 - DNS-specific, UDP, traceroute, TLS-expiry, and browser-journey checks are not implemented.
+- Duration-based availability only reflects persisted outages after the failure threshold; it is not a full SLO or maintenance-aware calculation.
 - The scheduler runs in the API process and is not designed for horizontal scaling.
 - SQLite is suitable for this single-user local MVP, not for concurrent multi-instance production monitoring.
 - Public deployments require additional authentication, origin/CSRF review, rate limiting, secret management, and operational hardening.
+- Closed measurements and outages older than `RETENTION_DAYS` (30 by default) are removed hourly; active outages are preserved until recovery.
+- The API emits JSON logs with request IDs; `API_RATE_LIMIT` defaults to 120 requests per minute per client address.
+- Startup and shutdown failures are logged as `server.startup_failed` or `server.shutdown_failed`; request failures include the response request ID.
+- For diagnostics, run `npm run dev:api` and query `Invoke-RestMethod http://127.0.0.1:4000/api/health` from PowerShell.
 
 ### Troubleshooting
 

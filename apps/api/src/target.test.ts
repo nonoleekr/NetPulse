@@ -17,7 +17,7 @@ describe("HTTP target validation", () => {
     },
   );
 
-  it.each(["::", "::1", "::ffff:127.0.0.1", "ff02::1"])("rejects unsafe IPv6 address %s", async (address) => {
+  it.each(["::", "::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "ff02::1"])("rejects unsafe IPv6 address %s", async (address) => {
     await expect(validateHttpTarget(`http://[${address}]:4001`)).rejects.toThrow("blocked");
   });
 
