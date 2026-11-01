@@ -56,7 +56,7 @@ not discarded by this milestone.
 
 | Command/check | Result |
 | --- | --- |
-| `npm test` | 35 tests passed across 9 files |
+| `npm test` | 36 tests passed across 9 files |
 | `npm run lint` | Passed for contracts, API, and web |
 | `npm run build` | Passed; Vite production bundle generated |
 | API live smoke test | Passed: `GET /api/health` returned `{"data":{"status":"ok"}}` |

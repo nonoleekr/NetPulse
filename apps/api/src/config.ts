@@ -6,6 +6,7 @@ function boundedNumber(value: string | undefined, fallback: number, minimum: num
 }
 
 export const config = {
+  host: process.env.HOST ?? "127.0.0.1",
   port: boundedNumber(process.env.PORT, 4000, 1, 65535),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "file:./dev.db",

@@ -2,12 +2,12 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1 through 6 are implemented on the development branch. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, shows selectable history, and includes local security/operational hardening plus operational dashboard polish. Alerts, browser E2E, and public deployment hardening remain planned.
+> **Current status:** Milestones 1 through 7 are implemented on the development branch. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, shows selectable history, and includes local security/operational hardening, Docker packaging, CI verification, and release documentation. Public deployment remains out of scope.
 
 Security review status is documented in [`docs/security-audit.md`](./docs/security-audit.md).
-The application is suitable for local development only; public release remains
-blocked by the unresolved Prisma toolchain advisory and the absence of
-authentication, TLS, and public-deployment controls.
+The application is suitable for local development and local Docker use only;
+public release remains blocked by the absence of authentication, TLS, and
+public-deployment controls.
 
 ## Project Overview
 
@@ -46,7 +46,7 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 6
+## Current Status: Milestone 7
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -67,7 +67,7 @@ Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 - DNS validation and connection using the validated address to reduce DNS-rebinding risk.
 - Hard probe timeouts and response-body size limits.
 
-The current automated verification includes target-validation tests, IPv6 and DNS-rebinding regression tests, timeout tests, response-size tests, redirect behavior, failed HTTP status handling, API health tests, TypeScript checks, and production builds.
+The current automated verification includes target-validation tests, IPv6 and DNS-rebinding regression tests, timeout tests, response-size tests, redirect behavior, failed HTTP status handling, API health tests, TypeScript checks, production builds, and deterministic Playwright browser tests using an isolated local fixture.
 
 Milestone 2 adds:
 
@@ -115,6 +115,16 @@ Milestone 6 adds:
 - Pause/resume and delete controls with confirmation, accessible status labels, responsive form/card layouts, keyboard focus states, and reduced-motion support.
 - Clear distinction between live updates, reconnecting, offline, UP, DOWN, PAUSED, and UNKNOWN states.
 
+Milestone 7 adds:
+
+- Multi-stage Docker builds for the API and static dashboard, with a non-root
+  API user and persistent SQLite volume.
+- Docker Compose startup with health checks, automatic migration deployment,
+  restart policy, and WebSocket reverse proxying.
+- CI permissions hardening, Docker build checks, dependency audit gating, and
+  reproducible release documentation.
+- A recommended `v0.1.0` changelog and release checklist.
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -136,6 +146,24 @@ Milestone 6 adds:
 | Concurrently | Runs the API and frontend development servers together |
 
 Tailwind CSS and Recharts are part of the longer-term architecture but are not dependencies in the current repository. The current UI uses a small custom stylesheet to keep the MVP dependency-light.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser[React dashboard] -->|REST + WebSocket| Gateway[Nginx :8080]
+  Gateway --> API[Express API :4000]
+  API --> Scheduler[Safe scheduler]
+  Scheduler --> Probes[HTTP / TCP / ICMP probes]
+  API --> DB[(SQLite volume)]
+  API --> Events[Typed event bus]
+  Events --> Gateway
+```
+
+In local development, Vite serves the dashboard on port 5173 and the API binds
+to `127.0.0.1:4000`. In Docker Compose, Nginx serves the dashboard on port 8080,
+proxies `/api` and `/ws` to the API service, and the API binds to `0.0.0.0`
+inside the private Compose network. The host exposes only the Nginx port.
 
 ## Installation & First-Time Setup
 
@@ -160,7 +188,7 @@ Replace the placeholder URL with the repository URL when cloning from GitHub:
 ```powershell
 git clone <repository-url> NetPulse
 Set-Location NetPulse
-npm install
+npm ci
 ```
 
 ### Configure the API
@@ -171,7 +199,10 @@ Create the local environment file from the checked-in template:
 Copy-Item apps/api/.env.example apps/api/.env
 ```
 
-The default configuration runs the API on port `4000`, serves the frontend from port `5173`, and stores SQLite data in `apps/api/prisma/dev.db`.
+The default configuration binds the API to `127.0.0.1:4000`, serves the
+frontend from port `5173`, and stores SQLite data in
+`apps/api/prisma/dev.db`. Docker sets `HOST=0.0.0.0` only inside its private
+Compose network.
 
 For normal use, keep this setting disabled:
 
@@ -197,6 +228,10 @@ npm run db:generate
 npm run db:migrate
 ```
 
+`npm ci` is preferred for a clean checkout and is used by CI. If your npm
+installation blocks package lifecycle scripts, run `npm run db:generate`
+explicitly after installation before starting tests or the API.
+
 ### Start NetPulse
 
 Run both development servers:
@@ -216,6 +251,38 @@ To run either process separately:
 npm run dev:api
 npm run dev:web
 ```
+
+### Docker Compose deployment
+
+Install Docker Desktop with the Linux container engine enabled, then run:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build -d
+docker compose ps
+docker compose logs -f api
+```
+
+Open <http://localhost:8080>. The API is not published directly; Nginx proxies
+the dashboard's REST and WebSocket requests. SQLite is stored in the named
+`netpulse-data` volume and migrations run non-destructively when the API starts.
+Use `docker compose restart` to test recovery and `docker compose down` to stop
+services. Do not use `docker compose down -v` unless you intentionally want to
+remove the monitoring database.
+
+Back up and restore the named volume from PowerShell:
+
+```powershell
+docker run --rm -v netpulse-data:/data -v ${PWD}:/backup alpine `
+  tar czf /backup/netpulse-data.tgz -C /data .
+docker run --rm -v netpulse-data:/data -v ${PWD}:/backup alpine `
+  sh -c "rm -rf /data/* && tar xzf /backup/netpulse-data.tgz -C /data"
+```
+
+The Docker image does not grant privileged ICMP access. HTTP and TCP monitoring
+remain supported; ICMP may report an unsupported or permission failure depending
+on the host and container runtime. Never publish port 4000 or expose this
+unauthenticated application directly to the Internet.
 
 ## Usage Guide
 
@@ -279,14 +346,18 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] Structured logs, graceful shutdown, scheduler/WebSocket resilience
   - [x] GitHub Actions checks for migrations, tests, lint, and build
   - [x] SSRF regression coverage, including hexadecimal IPv4-mapped IPv6 targets
-  - [ ] Resolve the Prisma/deepmerge-ts High dependency advisory before public release
+  - [x] Resolve the Prisma/deepmerge-ts High dependency advisory before public release
 - [x] **Milestone 6 — Operational polish and reliability**
   - [x] Startup/shutdown and in-flight deletion reliability
   - [x] Dashboard loading, error, lifecycle, accessibility, and responsive states
   - [x] Regression coverage and verified production build
-- [ ] **Future — Operational packaging**
+- [x] **Milestone 7 — Deployment and portfolio release preparation**
+  - [x] Multi-stage Docker and Compose packaging with persistent SQLite storage
+  - [x] CI Docker-build, audit, test, lint, migration, and production-build checks
+  - [x] Installation, backup/restore, changelog, and release checklist documentation
+  - [ ] Approve a software license
+- [ ] **Future — Browser verification**
   - [ ] Browser end-to-end workflow
-  - [ ] Optional Docker packaging
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
   - [ ] Remote probe agents and multi-region monitoring
@@ -331,7 +402,15 @@ npm run lint
 npm run build
 ```
 
-The current suite includes 33 passing API, configuration, target-validation, HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and operational-resilience tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
+The current suite includes 35 passing API, configuration, target-validation,
+HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and
+operational-resilience tests. The production build creates the API output in
+`apps/api/dist` and the frontend output in `apps/web/dist`.
+
+The CI workflow runs these checks plus Docker image builds and
+`npm audit --omit=dev --audit-level=high`. Prisma 7 uses the
+`better-sqlite3` adapter and the production audit currently reports zero
+vulnerabilities.
 
 ## Known Limitations
 
@@ -346,6 +425,11 @@ The current suite includes 33 passing API, configuration, target-validation, HTT
 - The scheduler runs in the API process and is not designed for horizontal scaling.
 - SQLite is suitable for this single-user local MVP, not for concurrent multi-instance production monitoring.
 - Public deployments require additional authentication, origin/CSRF review, rate limiting, secret management, and operational hardening.
+- Docker Compose is a local deployment package, not a public security boundary;
+  it has no authentication and should remain behind a trusted host firewall or
+  an authenticated TLS reverse proxy.
+- The recommended first version is `v0.1.0`; see [`CHANGELOG.md`](./CHANGELOG.md)
+  and [`docs/release-checklist.md`](./docs/release-checklist.md).
 - Closed measurements and outages older than `RETENTION_DAYS` (30 by default) are removed hourly; active outages are preserved until recovery.
 - The API emits JSON logs with request IDs; `API_RATE_LIMIT` defaults to 120 requests per minute per client address.
 - Startup and shutdown failures are logged as `server.startup_failed` or `server.shutdown_failed`; request failures include the response request ID.
