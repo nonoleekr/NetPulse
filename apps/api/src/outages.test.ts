@@ -19,6 +19,7 @@ const update = vi.fn().mockImplementation(async ({ where, data }) => ({
 
 vi.mock("./db.js", () => ({
   prisma: {
+    monitor: { findUnique: vi.fn(() => Promise.resolve({ enabled: true })) },
     measurement: { findMany: vi.fn(() => Promise.resolve(state.recent)) },
     outage: {
       findFirst: vi.fn(() => Promise.resolve(state.active)),

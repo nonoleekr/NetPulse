@@ -4,6 +4,7 @@ import type { WebSocketEvent } from "@netpulse/contracts";
 import "./style.css";
 
 type Measurement = {
+  id?: string;
   success: boolean;
   latencyMs: number | null;
   statusCode: number | null;
@@ -17,6 +18,7 @@ type Monitor = {
   kind: "HTTP" | "TCP" | "ICMP";
   host: string | null;
   port: number | null;
+  enabled: boolean;
   measurements: Measurement[];
   completedProbes: number;
   failedProbes: number;
@@ -43,6 +45,22 @@ const api = "http://localhost:4000/api";
 const websocketUrl = "ws://localhost:4000/ws";
 type ConnectionStatus = "live" | "reconnecting" | "offline";
 
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${api}${path}`, init);
+  } catch {
+    throw new Error("The API is unavailable. Check that the backend is running.");
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error?.message ?? "The request could not be completed.");
+  return body.data as T;
+}
+
+function formatStatus(status: Monitor["status"]) {
+  return status === "UP" ? "Up" : status === "DOWN" ? "Down" : status === "PAUSED" ? "Paused" : "Unknown";
+}
+
 function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [name, setName] = useState("Local test");
@@ -51,31 +69,54 @@ function App() {
   const [host, setHost] = useState("example.com");
   const [port, setPort] = useState("443");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("reconnecting");
   const [historyHours, setHistoryHours] = useState("24");
   const [history, setHistory] = useState<Record<string, History>>({});
+  const [historyError, setHistoryError] = useState("");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const socket = useRef<WebSocket | undefined>(undefined);
   const reconnectAttempt = useRef(0);
 
-  const load = () => fetch(`${api}/monitors`).then((res) => res.json()).then((body) => setMonitors(body.data));
-  const loadMonitor = (monitorId: string) => fetch(`${api}/monitors/${monitorId}`).then((res) => res.json()).then((body) => {
-    if (!body.data) return;
-    setMonitors((current) => current.some((monitor) => monitor.id === monitorId)
-      ? current.map((monitor) => monitor.id === monitorId ? body.data : monitor)
-      : [...current, body.data]);
-  });
-  const loadHistory = (monitorId: string) => fetch(`${api}/monitors/${monitorId}/history?hours=${historyHours}`).then((res) => res.json()).then((body) => {
-    if (body.data) setHistory((current) => ({ ...current, [monitorId]: body.data }));
-  });
+  const load = async () => {
+    const data = await request<Monitor[]>("/monitors");
+    setMonitors(data);
+    return data;
+  };
+  const loadMonitor = async (monitorId: string) => {
+    try {
+      const data = await request<Monitor>(`/monitors/${monitorId}`);
+      setMonitors((current) => current.some((monitor) => monitor.id === monitorId)
+        ? current.map((monitor) => monitor.id === monitorId ? data : monitor)
+        : [...current, data]);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not refresh monitor.");
+    }
+  };
+  const loadHistory = async (monitorId: string) => {
+    try {
+      const data = await request<History>(`/monitors/${monitorId}/history?hours=${historyHours}`);
+      setHistory((current) => ({ ...current, [monitorId]: data }));
+    } catch (loadError) {
+      setHistoryError(loadError instanceof Error ? loadError.message : "Could not load history.");
+    }
+  };
 
   useEffect(() => {
-    void load().then(() => {
-      void fetch(`${api}/monitors`).then((res) => res.json()).then((body) => {
-        for (const monitor of body.data as Monitor[]) void loadHistory(monitor.id);
-      });
-    });
+    let disposed = false;
+    setLoading(true);
+    setError("");
+    void load()
+      .then((data) => Promise.all(data.map((monitor) => loadHistory(monitor.id))))
+      .catch((loadError) => {
+        if (!disposed) setError(loadError instanceof Error ? loadError.message : "Could not load monitors.");
+      })
+      .finally(() => { if (!disposed) setLoading(false); });
+    return () => { disposed = true; };
   }, [historyHours]);
+
   useEffect(() => {
     let disposed = false;
     const connect = () => {
@@ -86,7 +127,7 @@ function App() {
       currentSocket.onopen = () => {
         reconnectAttempt.current = 0;
         setConnectionStatus("live");
-        void load();
+        void load().catch(() => setConnectionStatus("offline"));
       };
       currentSocket.onmessage = (message) => {
         try {
@@ -119,59 +160,102 @@ function App() {
   async function addMonitor(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    const response = await fetch(`${api}/monitors`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(kind === "HTTP"
-        ? { name, kind, url, intervalSeconds: 30, timeoutMs: 5000 }
-        : { name, kind, host, ...(kind === "TCP" ? { port: Number(port) } : {}), intervalSeconds: 30, timeoutMs: 5000 }),
-    });
-    const body = await response.json();
-    if (!response.ok) { setError(body.error?.message ?? "Could not create monitor"); return; }
-    await load();
+    setSubmitting(true);
+    try {
+      await request<Monitor>("/monitors", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(kind === "HTTP"
+          ? { name, kind, url, intervalSeconds: 30, timeoutMs: 5000 }
+          : { name, kind, host, ...(kind === "TCP" ? { port: Number(port) } : {}), intervalSeconds: 30, timeoutMs: 5000 }),
+      });
+      await load();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not create monitor.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function updateMonitor(monitor: Monitor, enabled: boolean) {
+    setActionId(monitor.id);
+    setError("");
+    try {
+      await request(`/monitors/${monitor.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      await loadMonitor(monitor.id);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not update monitor.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function deleteMonitor(monitor: Monitor) {
+    if (!window.confirm(`Delete "${monitor.name}" and its history? This cannot be undone.`)) return;
+    setActionId(monitor.id);
+    try {
+      await request(`/monitors/${monitor.id}`, { method: "DELETE" });
+      setMonitors((current) => current.filter((item) => item.id !== monitor.id));
+      setHistory((current) => {
+        const next = { ...current };
+        delete next[monitor.id];
+        return next;
+      });
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not delete monitor.");
+    } finally {
+      setActionId(null);
+    }
   }
 
   return <main>
-    <header><p className="eyebrow">NETPULSE / MILESTONE 04</p><h1>Know when the network changes.</h1><p className="subtitle">Real HTTP, TCP, and ICMP monitoring with outage history.</p><span className={`connection ${connectionStatus}`}>{connectionStatus === "live" ? "Live" : connectionStatus === "reconnecting" ? "Reconnecting" : "Offline"}</span></header>
-    <section className="panel">
-      <h2>Add a monitor</h2>
+    <header>
+      <p className="eyebrow">NETPULSE / OPERATIONS</p>
+      <h1>Know when the network changes.</h1>
+      <p className="subtitle">Real HTTP, TCP, and ICMP monitoring with outage history.</p>
+      <span className={`connection ${connectionStatus}`} role="status" aria-live="polite">
+        <span className="status-dot" aria-hidden="true" />{connectionStatus === "live" ? "Live updates" : connectionStatus === "reconnecting" ? "Reconnecting" : "Offline"}
+      </span>
+    </header>
+    <section className="panel" aria-labelledby="add-heading">
+      <div className="section-heading"><div><p className="section-kicker">New check</p><h2 id="add-heading">Add a monitor</h2></div><span className="panel-note">Runs every 30 seconds</span></div>
       <form onSubmit={addMonitor}>
-        <input aria-label="Monitor name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Monitor name" />
-        <select aria-label="Probe type" value={kind} onChange={(e) => setKind(e.target.value as Monitor["kind"])}>
-          <option value="HTTP">HTTP(S)</option>
-          <option value="TCP">TCP</option>
-          <option value="ICMP">ICMP</option>
-        </select>
-        {kind === "HTTP"
-          ? <input aria-label="HTTP URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
-          : <input aria-label="Host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="example.com or IP address" />}
-        {kind === "TCP" && <input aria-label="TCP port" type="number" min="1" max="65535" value={port} onChange={(e) => setPort(e.target.value)} placeholder="443" />}
-        <button type="submit">Start monitoring</button>
+        <label>Monitor name<input aria-label="Monitor name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Monitor name" /></label>
+        <label>Probe type<select aria-label="Probe type" value={kind} onChange={(e) => setKind(e.target.value as Monitor["kind"])}><option value="HTTP">HTTP(S)</option><option value="TCP">TCP</option><option value="ICMP">ICMP</option></select></label>
+        <label className="grow">{kind === "HTTP" ? "HTTP URL" : "Host"}{kind === "HTTP" ? <input aria-label="HTTP URL" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" /> : <input aria-label="Host" required value={host} onChange={(e) => setHost(e.target.value)} placeholder="example.com or IP address" />}</label>
+        {kind === "TCP" && <label>TCP port<input aria-label="TCP port" required type="number" min="1" max="65535" value={port} onChange={(e) => setPort(e.target.value)} /></label>}
+        <button type="submit" disabled={submitting}>{submitting ? "Starting…" : "Start monitoring"}</button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </section>
-    <section className="grid">
-      {monitors.map((monitor) => {
+    <div className="content-heading"><div><p className="section-kicker">Fleet view</p><h2>Monitors</h2></div><span className="muted">{monitors.length} configured</span></div>
+    <section className="grid" aria-live="polite">
+      {loading && <div className="empty"><strong>Loading monitors…</strong><span>Connecting to the local API.</span></div>}
+      {!loading && !monitors.length && <div className="empty"><strong>No monitors yet</strong><span>Add a real HTTP, TCP, or ICMP target above to begin collecting measurements.</span></div>}
+      {!loading && monitors.map((monitor) => {
         const latest = monitor.measurements[0];
         const monitorHistory = history[monitor.id];
         const points = monitorHistory?.measurements.slice(-30) ?? [];
+        const maximum = Math.max(...points.flatMap((item) => item.latencyMs === null ? [] : [item.latencyMs]), 1);
         return <article className="card" key={monitor.id}>
-          <div className="card-top"><div><h2>{monitor.name}</h2><p>{monitor.kind} · {monitor.kind === "TCP" ? `${monitor.host}:${monitor.port}` : monitor.kind === "ICMP" ? monitor.host : monitor.url}</p></div><span className={`pill ${monitor.status.toLowerCase()}`} aria-label={`Monitor status: ${monitor.status}`}>{monitor.status}</span></div>
-          <div className="metric"><strong>{latest?.latencyMs ?? "—"}{latest?.latencyMs ? " ms" : ""}</strong><span>latest latency</span></div>
-          <div className="stats"><span><strong>{monitorHistory?.sampledAvailabilityPercent ?? monitor.sampledAvailabilityPercent ?? "—"}%</strong> sampled availability</span><span><strong>{monitorHistory?.packetLossPercent ?? monitor.packetLossPercent ?? "—"}%</strong> packet loss</span><span><strong>{monitorHistory?.durationAvailabilityPercent ?? "—"}%</strong> duration availability</span></div>
-          <div className="stats secondary"><span><strong>{monitorHistory?.averageLatencyMs ?? "—"} ms</strong> average latency</span><span><strong>{monitorHistory?.minimumLatencyMs ?? "—"}–{monitorHistory?.maximumLatencyMs ?? "—"} ms</strong> min–max latency</span><span><strong>{monitorHistory?.outageCount ?? 0}</strong> outages</span></div>
-          <div className="history-heading"><span>Last {historyHours}h</span><label>Window <select value={historyHours} onChange={(e) => setHistoryHours(e.target.value)}><option value="1">1h</option><option value="6">6h</option><option value="24">24h</option><option value="168">7d</option><option value="720">30d</option></select></label></div>
-          <div className="history-chart" aria-label="Recent latency and probe result history">{points.map((point) => {
-            const maximum = Math.max(...points.flatMap((item) => item.latencyMs === null ? [] : [item.latencyMs]), 1);
-            const height = point.latencyMs === null ? 8 : Math.max(8, Math.round((point.latencyMs / maximum) * 30));
-            return <span key={point.completedAt} className={`history-point ${point.success ? "success" : "failure"}`} style={{ height }} title={`${new Date(point.completedAt).toLocaleString()} — ${point.success ? `${point.latencyMs ?? "No latency"} ms` : "failed probe"}`} />;
-          })}</div>
-          {monitorHistory?.outages.length ? <div className="outage-history" aria-label="Outage history">{monitorHistory.outages.map((outage) => <p key={outage.id}><strong>{new Date(outage.startedAt).toLocaleString()}</strong> → {outage.endedAt ? new Date(outage.endedAt).toLocaleString() : "ongoing"}</p>)}</div> : null}
-          {monitor.activeOutage ? <p className="outage-note">Outage since {new Date(monitor.activeOutage.startedAt).toLocaleString()} ({monitor.activeOutage.failureCount} failures)</p> : monitorHistory?.outages.length ? <p className="outage-note">{monitorHistory.outages.length} outage{monitorHistory.outages.length === 1 ? "" : "s"} in this window</p> : null}
-          <p className="muted">{latest ? `Checked ${new Date(latest.completedAt).toLocaleString()}` : "First real probe is running..."}</p>
+          <div className="card-top"><div><h3>{monitor.name}</h3><p>{monitor.kind} · {monitor.kind === "TCP" ? `${monitor.host}:${monitor.port}` : monitor.kind === "ICMP" ? monitor.host : monitor.url}</p></div><span className={`pill ${monitor.status.toLowerCase()}`} aria-label={`Monitor status: ${formatStatus(monitor.status)}`}>{formatStatus(monitor.status)}</span></div>
+          <div className="metric"><strong>{latest?.latencyMs ?? "—"}{latest?.latencyMs ? " ms" : ""}</strong><span>{latest ? latest.success ? "latest response" : "latest probe failed" : "awaiting first probe"}</span></div>
+          <div className="stats"><span><strong>{monitorHistory?.sampledAvailabilityPercent ?? monitor.sampledAvailabilityPercent ?? "—"}%</strong>sampled availability</span><span><strong>{monitorHistory?.packetLossPercent ?? monitor.packetLossPercent ?? "—"}%</strong>packet loss</span><span><strong>{monitorHistory?.outageCount ?? 0}</strong>outages</span></div>
+          <div className="history-heading"><span>History · {historyHours === "24" ? "24 hours" : historyHours === "720" ? "30 days" : `${historyHours} hours`}</span><label>Window <select value={historyHours} onChange={(e) => setHistoryHours(e.target.value)}><option value="1">1 hour</option><option value="6">6 hours</option><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></label></div>
+          {historyError && <p className="error compact" role="alert">{historyError}</p>}
+          <div className="history-chart" aria-label="Recent latency and probe result history">{points.map((point, index) => {
+            const height = point.latencyMs === null ? 8 : Math.max(8, Math.round((point.latencyMs / maximum) * 34));
+            return <span key={point.id ?? `${point.completedAt}-${index}`} className={`history-point ${point.success ? "success" : "failure"}`} style={{ height }} title={`${new Date(point.completedAt).toLocaleString()} — ${point.success ? `${point.latencyMs ?? "No latency"} ms` : "failed probe"}`} />;
+          })}{!points.length && <span className="chart-empty">No measurements in this window</span>}</div>
+          <div className="card-footer"><span className="muted">{latest ? `Checked ${new Date(latest.completedAt).toLocaleString()}` : "First real probe is running…"}</span><div className="actions"><button className="secondary" disabled={actionId === monitor.id} onClick={() => void updateMonitor(monitor, !monitor.enabled)}>{monitor.enabled ? "Pause" : "Resume"}</button><button className="secondary danger" disabled={actionId === monitor.id} onClick={() => void deleteMonitor(monitor)}>Delete</button></div></div>
+          {monitor.activeOutage && <p className="outage-note" role="status">Down since {new Date(monitor.activeOutage.startedAt).toLocaleString()} · {monitor.activeOutage.failureCount} consecutive failures</p>}
+          {monitorHistory?.outages.length ? <div className="outage-history" aria-label="Outage history"><strong>Outage history</strong>{monitorHistory.outages.slice(-3).map((outage) => <p key={outage.id}>{new Date(outage.startedAt).toLocaleString()} → {outage.endedAt ? new Date(outage.endedAt).toLocaleString() : "ongoing"}</p>)}</div> : null}
         </article>;
       })}
-      {!monitors.length && <div className="empty">Add a URL above to begin collecting real measurements.</div>}
     </section>
   </main>;
 }

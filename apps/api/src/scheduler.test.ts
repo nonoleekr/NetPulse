@@ -76,4 +76,22 @@ describe("measurement persistence and events", () => {
       where: { endedAt: { not: null, lt: new Date("2026-10-31T00:00:00.000Z") } },
     });
   });
+
+  it("does not persist a completed probe after its monitor is deleted", async () => {
+    const { prisma } = await import("./db.js");
+    const { runProbe } = await import("./scheduler.js");
+    vi.mocked(prisma.monitor.findUnique)
+      .mockResolvedValueOnce(monitor as never)
+      .mockResolvedValueOnce(null);
+    const createCalls = vi.mocked(prisma.measurement.create).mock.calls.length;
+
+    const result = await runProbe(monitor.id, async () => ({
+      success: true,
+      latencyMs: 10,
+      statusCode: 200,
+    }));
+
+    expect(result).toBeNull();
+    expect(prisma.measurement.create).toHaveBeenCalledTimes(createCalls);
+  });
 });

@@ -2,7 +2,12 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1 through 4 are complete. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, and shows selectable history through REST plus WebSocket-triggered refreshes. Alerts and advanced analytics are planned.
+> **Current status:** Milestones 1 through 6 are implemented on the development branch. NetPulse monitors HTTP(S), TCP, and ICMP targets, stores real measurements in SQLite, tracks outages, shows selectable history, and includes local security/operational hardening plus operational dashboard polish. Alerts, browser E2E, and public deployment hardening remain planned.
+
+Security review status is documented in [`docs/security-audit.md`](./docs/security-audit.md).
+The application is suitable for local development only; public release remains
+blocked by the unresolved Prisma toolchain advisory and the absence of
+authentication, TLS, and public-deployment controls.
 
 ## Project Overview
 
@@ -41,7 +46,7 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 4
+## Current Status: Milestone 6
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -94,6 +99,21 @@ Milestone 4 adds:
 - Configurable bounded retention pruning for old measurements and closed outages.
 - REST history pagination and server-side latency, probe, loss, availability, and outage statistics.
 - WebSocket outage-start, outage-recovery, and monitor-status events after persistence.
+
+Milestone 5 adds:
+
+- Security response headers, strict local-origin CORS, request IDs, bounded JSON bodies, and an in-process API rate limit.
+- Structured JSON request, error, lifecycle, scheduler, and retention logs without logging target credentials or response bodies.
+- Resilient scheduler error isolation, periodic cleanup error handling, WebSocket heartbeat cleanup, and graceful shutdown.
+- GitHub Actions verification for locked dependency installation, migrations, tests, lint, and production builds.
+
+Milestone 6 adds:
+
+- Startup failure handling and safe shutdown of the scheduler, WebSocket server, HTTP server, and Prisma client.
+- A deletion race guard so an in-flight probe cannot persist a measurement after its monitor is removed.
+- Dashboard loading, empty, network-error, disabled-action, and reconnecting states.
+- Pause/resume and delete controls with confirmation, accessible status labels, responsive form/card layouts, keyboard focus states, and reduced-motion support.
+- Clear distinction between live updates, reconnecting, offline, UP, DOWN, PAUSED, and UNKNOWN states.
 
 ## Tech Stack
 
@@ -254,9 +274,18 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] Consecutive-failure outage detection
   - [x] Duration-based availability when outage duration is measured
   - [x] Retention management
-- [ ] **Milestone 5 — Operational hardening**
-  - [ ] Additional security headers, rate limits, and structured logging
-  - [ ] CI workflow and browser tests
+- [x] **Milestone 5 — Security and operational reliability**
+  - [x] Security headers, strict origin policy, request IDs, body limits, and rate limiting
+  - [x] Structured logs, graceful shutdown, scheduler/WebSocket resilience
+  - [x] GitHub Actions checks for migrations, tests, lint, and build
+  - [x] SSRF regression coverage, including hexadecimal IPv4-mapped IPv6 targets
+  - [ ] Resolve the Prisma/deepmerge-ts High dependency advisory before public release
+- [x] **Milestone 6 — Operational polish and reliability**
+  - [x] Startup/shutdown and in-flight deletion reliability
+  - [x] Dashboard loading, error, lifecycle, accessibility, and responsive states
+  - [x] Regression coverage and verified production build
+- [ ] **Future — Operational packaging**
+  - [ ] Browser end-to-end workflow
   - [ ] Optional Docker packaging
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
@@ -302,7 +331,7 @@ npm run lint
 npm run build
 ```
 
-The current suite includes 30 passing API, target-validation, HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, and WebSocket tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
+The current suite includes 33 passing API, configuration, target-validation, HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and operational-resilience tests. The production build creates the API output in `apps/api/dist` and the frontend output in `apps/web/dist`.
 
 ## Known Limitations
 
@@ -318,6 +347,9 @@ The current suite includes 30 passing API, target-validation, HTTP/TCP/ICMP prob
 - SQLite is suitable for this single-user local MVP, not for concurrent multi-instance production monitoring.
 - Public deployments require additional authentication, origin/CSRF review, rate limiting, secret management, and operational hardening.
 - Closed measurements and outages older than `RETENTION_DAYS` (30 by default) are removed hourly; active outages are preserved until recovery.
+- The API emits JSON logs with request IDs; `API_RATE_LIMIT` defaults to 120 requests per minute per client address.
+- Startup and shutdown failures are logged as `server.startup_failed` or `server.shutdown_failed`; request failures include the response request ID.
+- For diagnostics, run `npm run dev:api` and query `Invoke-RestMethod http://127.0.0.1:4000/api/health` from PowerShell.
 
 ### Troubleshooting
 

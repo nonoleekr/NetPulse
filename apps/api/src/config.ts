@@ -1,16 +1,23 @@
 import "dotenv/config";
 
+function boundedNumber(value: string | undefined, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
+
 export const config = {
-  port: Number(process.env.PORT ?? 4000),
+  port: boundedNumber(process.env.PORT, 4000, 1, 65535),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "file:./dev.db",
   environment: process.env.NODE_ENV ?? "production",
   allowLocalTargets: process.env.NETPULSE_ALLOW_LOCAL_TARGETS === "true"
     && ["development", "test"].includes(process.env.NODE_ENV ?? ""),
-  maxMonitors: Number(process.env.MAX_MONITORS ?? 100),
-  maxResponseBytes: Number(process.env.MAX_RESPONSE_BYTES ?? 1024 * 1024),
-  maxWebSocketClients: Number(process.env.MAX_WEBSOCKET_CLIENTS ?? 25),
-  maxWebSocketPayloadBytes: Number(process.env.MAX_WEBSOCKET_PAYLOAD_BYTES ?? 16 * 1024),
-  retentionDays: Math.min(3650, Math.max(1, Number(process.env.RETENTION_DAYS ?? 30))),
-  outageFailureThreshold: Math.min(10, Math.max(2, Number(process.env.OUTAGE_FAILURE_THRESHOLD ?? 3))),
+  maxMonitors: boundedNumber(process.env.MAX_MONITORS, 100, 1, 1000),
+  maxResponseBytes: boundedNumber(process.env.MAX_RESPONSE_BYTES, 1024 * 1024, 1024, 10 * 1024 * 1024),
+  maxWebSocketClients: boundedNumber(process.env.MAX_WEBSOCKET_CLIENTS, 25, 1, 1000),
+  maxWebSocketPayloadBytes: boundedNumber(process.env.MAX_WEBSOCKET_PAYLOAD_BYTES, 16 * 1024, 1024, 1024 * 1024),
+  retentionDays: boundedNumber(process.env.RETENTION_DAYS, 30, 1, 3650),
+  outageFailureThreshold: boundedNumber(process.env.OUTAGE_FAILURE_THRESHOLD, 3, 2, 10),
+  apiRateLimit: boundedNumber(process.env.API_RATE_LIMIT, 120, 10, 1000),
+  apiRateWindowMs: 60_000,
 };

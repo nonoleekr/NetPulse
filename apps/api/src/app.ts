@@ -6,6 +6,9 @@ import { config } from "./config.js";
 import { clearSchedule, runProbe, scheduleMonitor } from "./scheduler.js";
 import { validateHost, validateHttpTarget } from "./target.js";
 import { emitMonitoringEvent } from "./measurement-events.js";
+import { randomUUID } from "node:crypto";
+import type { NextFunction, Request, Response } from "express";
+import { logger } from "./logger.js";
 
 const commonInput = {
   name: z.string().trim().min(1).max(80),
@@ -24,6 +27,49 @@ const historyQuery = z.object({
 });
 
 export const app = express();
+const rateBuckets = new Map<string, { startedAt: number; count: number }>();
+
+app.disable("x-powered-by");
+app.use((request: Request, response: Response, next: NextFunction) => {
+  const requestId = request.header("x-request-id")?.slice(0, 80) || randomUUID();
+  const startedAt = performance.now();
+  response.setHeader("x-request-id", requestId);
+  response.on("finish", () => logger.info("request.completed", {
+    requestId,
+    method: request.method,
+    path: request.path,
+    statusCode: response.statusCode,
+    durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+  }));
+  next();
+});
+app.use((_request, response, next) => {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self' http://localhost:4000 ws://localhost:4000");
+  next();
+});
+app.use((request, response, next) => {
+  const now = Date.now();
+  const key = request.ip || request.socket.remoteAddress || "unknown";
+  const bucket = rateBuckets.get(key);
+  for (const [bucketKey, value] of rateBuckets) {
+    if (now - value.startedAt >= config.apiRateWindowMs) rateBuckets.delete(bucketKey);
+  }
+  if (!bucket || now - bucket.startedAt >= config.apiRateWindowMs) {
+    rateBuckets.set(key, { startedAt: now, count: 1 });
+    next();
+    return;
+  }
+  bucket.count += 1;
+  if (bucket.count > config.apiRateLimit) {
+    response.setHeader("Retry-After", "60");
+    response.status(429).json({ error: { code: "RATE_LIMITED", message: "Too many requests" } });
+    return;
+  }
+  next();
+});
 app.use(cors({ origin: config.webOrigin }));
 app.use(express.json({ limit: "16kb" }));
 
@@ -185,7 +231,10 @@ app.post("/api/monitors", async (request, response) => {
       timeoutMs: parsed.data.timeoutMs,
     },
   });
-  void scheduleMonitor(monitor.id);
+  void scheduleMonitor(monitor.id).catch((error) => logger.error("monitor.schedule_failed", {
+    monitorId: monitor.id,
+    error: error instanceof Error ? error.message : "Unknown error",
+  }));
   response.status(201).json({ data: monitor });
 });
 
@@ -211,7 +260,12 @@ app.patch("/api/monitors/:id", async (request, response) => {
   }
   if (parsed.data.enabled === false) clearSchedule(existing.id);
   const monitor = await prisma.monitor.update({ where: { id: existing.id }, data: parsed.data });
-  if (parsed.data.enabled === true) void scheduleMonitor(monitor.id);
+  if (parsed.data.enabled === true) {
+    void scheduleMonitor(monitor.id).catch((error) => logger.error("monitor.schedule_failed", {
+      monitorId: monitor.id,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }));
+  }
   if (parsed.data.enabled !== undefined) {
     emitMonitoringEvent({
       type: "monitor.status_changed",
@@ -230,4 +284,30 @@ app.delete("/api/monitors/:id", async (request, response) => {
     return;
   }
   response.status(204).send();
+});
+
+app.use((_request, response) => {
+  response.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } });
+});
+
+app.use((error: unknown, request: Request, response: Response, _next: NextFunction) => {
+  const requestId = response.getHeader("x-request-id");
+  logger.error("request.failed", {
+    requestId,
+    method: request.method,
+    path: request.path,
+    error: error instanceof Error ? error.message : "Unknown error",
+  });
+  if (response.headersSent) return;
+  const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+    ? error.status
+    : 500;
+  const clientError = status >= 400 && status < 500;
+  response.status(clientError ? status : 500).json({
+    error: {
+      code: clientError ? (status === 413 ? "PAYLOAD_TOO_LARGE" : "INVALID_REQUEST") : "INTERNAL_ERROR",
+      message: clientError ? "Invalid request" : "An internal error occurred",
+      requestId,
+    },
+  });
 });

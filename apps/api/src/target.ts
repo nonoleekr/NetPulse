@@ -13,8 +13,11 @@ function ipv4FromMappedIpv6(address: string) {
   const normalized = address.toLowerCase();
   if (!normalized.startsWith("::ffff:")) return null;
   const suffix = normalized.slice("::ffff:".length);
-  if (!suffix.includes(".")) return null;
-  return suffix;
+  if (suffix.includes(".")) return suffix;
+  const words = suffix.split(":");
+  if (words.length !== 2 || words.some((word) => !/^[0-9a-f]{1,4}$/.test(word))) return null;
+  const value = Number.parseInt(words[0], 16) * 0x10000 + Number.parseInt(words[1], 16);
+  return `${value >>> 24}.${(value >>> 16) & 0xff}.${(value >>> 8) & 0xff}.${value & 0xff}`;
 }
 
 function isPrivateOrReserved(address: string) {

@@ -9,6 +9,8 @@ export async function updateOutageState(
   success: boolean,
   errorMessage?: string | null,
 ) {
+  const monitor = await prisma.monitor.findUnique({ where: { id: monitorId }, select: { enabled: true } });
+  if (!monitor?.enabled) return;
   const recent = await prisma.measurement.findMany({
     where: { monitorId },
     orderBy: { completedAt: "desc" },

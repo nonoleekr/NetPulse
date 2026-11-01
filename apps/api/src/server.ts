@@ -3,20 +3,44 @@ import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 import { createWebSocketServer } from "./websocket.js";
+import { logger } from "./logger.js";
 
 const server = app.listen(config.port, "127.0.0.1", () => {
-  console.log(`NetPulse API listening on http://localhost:${config.port}`);
+  logger.info("server.started", { port: config.port });
 });
 const websocket = createWebSocketServer(server);
 
-await startScheduler();
-
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   stopScheduler();
   websocket.close();
-  server.close();
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   await prisma.$disconnect();
 }
 
-process.once("SIGINT", () => void shutdown());
-process.once("SIGTERM", () => void shutdown());
+let shuttingDown = false;
+const handleShutdown = () => {
+  if (shuttingDown) return;
+  void shutdown().catch((error) => {
+    logger.error("server.shutdown_failed", { error: error instanceof Error ? error.message : "Unknown error" });
+    process.exitCode = 1;
+  });
+};
+
+try {
+  await startScheduler();
+} catch (error) {
+  logger.error("server.startup_failed", { error: error instanceof Error ? error.message : "Unknown error" });
+  handleShutdown();
+}
+
+process.once("SIGINT", handleShutdown);
+process.once("SIGTERM", handleShutdown);
+process.on("uncaughtException", (error) => {
+  logger.error("process.uncaught_exception", { error: error.message });
+  handleShutdown();
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("process.unhandled_rejection", { error: reason instanceof Error ? reason.message : String(reason) });
+});
