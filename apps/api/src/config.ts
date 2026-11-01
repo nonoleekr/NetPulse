@@ -11,4 +11,6 @@ export const config = {
   maxResponseBytes: Number(process.env.MAX_RESPONSE_BYTES ?? 1024 * 1024),
   maxWebSocketClients: Number(process.env.MAX_WEBSOCKET_CLIENTS ?? 25),
   maxWebSocketPayloadBytes: Number(process.env.MAX_WEBSOCKET_PAYLOAD_BYTES ?? 16 * 1024),
+  retentionDays: Math.min(3650, Math.max(1, Number(process.env.RETENTION_DAYS ?? 30))),
+  outageFailureThreshold: Math.min(10, Math.max(2, Number(process.env.OUTAGE_FAILURE_THRESHOLD ?? 3))),
 };

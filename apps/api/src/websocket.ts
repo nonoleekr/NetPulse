@@ -50,7 +50,7 @@ export function createWebSocketServer(server: HttpServer) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }
   };
-  measurementEvents.on("measurement.completed", broadcastMeasurement);
+  measurementEvents.on("event", broadcastMeasurement);
 
   return {
     broadcast(event: WebSocketEvent) {
@@ -61,7 +61,7 @@ export function createWebSocketServer(server: HttpServer) {
     },
     close() {
       server.off("upgrade", handleUpgrade);
-      measurementEvents.off("measurement.completed", broadcastMeasurement);
+      measurementEvents.off("event", broadcastMeasurement);
       for (const client of clients) client.close(1001, "Server shutting down");
       clients.clear();
       websocketServer.close();

@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { app } from "./app.js";
-import { emitMeasurementCompleted } from "./measurement-events.js";
+import { emitMeasurementCompleted, emitMonitoringEvent } from "./measurement-events.js";
 import { createWebSocketServer } from "./websocket.js";
 
 const activeServers: Array<{
@@ -74,5 +74,28 @@ describe("WebSocket updates", () => {
       client.once("close", () => resolve());
     });
     await expect(rejected).resolves.toBeUndefined();
+  });
+
+  it("delivers outage and status transition events", async () => {
+    const server = await startServer();
+    const client = new WebSocket(server.url, { origin: "http://localhost:5173" });
+    const ready = waitForMessage(client);
+    await Promise.all([waitForOpen(client), ready]);
+    const eventPromise = waitForMessage(client);
+    emitMonitoringEvent({
+      type: "outage.started",
+      occurredAt: "2026-11-01T00:00:00.000Z",
+      payload: {
+        monitorId: "monitor-1",
+        outageId: "outage-1",
+        occurredAt: "2026-11-01T00:00:00.000Z",
+        startedAt: "2026-11-01T00:00:00.000Z",
+        endedAt: null,
+        failureCount: 3,
+        reason: "TIMEOUT",
+      },
+    });
+    await expect(eventPromise).resolves.toMatchObject({ type: "outage.started" });
+    client.close();
   });
 });

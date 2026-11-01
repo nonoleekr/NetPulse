@@ -6,9 +6,12 @@ import type { ProbeResult } from "./probe.js";
 import { probeTcp } from "./tcp-probe.js";
 import { probeIcmp } from "./icmp-probe.js";
 import type { ProbeTarget } from "./probe-types.js";
+import { updateOutageState } from "./outages.js";
+import { config } from "./config.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
 const active = new Set<string>();
+let retentionTimer: NodeJS.Timeout | undefined;
 
 async function executeProbe(target: ProbeTarget, timeoutMs: number) {
   if (target.kind === "TCP") return probeTcp(target.host ?? target.url, target.port ?? 0, timeoutMs);
@@ -45,6 +48,7 @@ export async function runProbe(
         errorMessage: result.errorMessage,
       },
     });
+    await updateOutageState(monitorId, measurement.completedAt, measurement.success, measurement.errorMessage);
     const event: WebSocketEvent = {
       type: "measurement.completed",
       occurredAt: measurement.completedAt.toISOString(),
@@ -80,8 +84,18 @@ export function clearSchedule(monitorId: string) {
 export async function startScheduler() {
   const monitors = await prisma.monitor.findMany({ where: { enabled: true } });
   for (const monitor of monitors) void scheduleMonitor(monitor.id);
+  await pruneHistory();
+  retentionTimer = setInterval(() => void pruneHistory(), 60 * 60 * 1000);
 }
 
 export function stopScheduler() {
   for (const monitorId of timers.keys()) clearSchedule(monitorId);
+  if (retentionTimer) clearInterval(retentionTimer);
+  retentionTimer = undefined;
+}
+
+export async function pruneHistory(now = new Date()) {
+  const cutoff = new Date(now.getTime() - config.retentionDays * 24 * 60 * 60 * 1000);
+  await prisma.measurement.deleteMany({ where: { completedAt: { lt: cutoff } } });
+  await prisma.outage.deleteMany({ where: { endedAt: { not: null, lt: cutoff } } });
 }

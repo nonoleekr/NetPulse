@@ -138,6 +138,14 @@ button {
   color: #ff9a9a;
   background: #4a2228;
 }
+.paused {
+  color: #f4c76d;
+  background: #44351b;
+}
+.unknown {
+  color: #b7c0cf;
+  background: #293447;
+}
 .metric {
   display: flex;
   align-items: baseline;
@@ -162,6 +170,54 @@ button {
   display: block;
   color: #e8edf5;
   font-size: 18px;
+}
+.stats.secondary {
+  margin-top: 12px;
+}
+.history-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  color: #8d9aad;
+  font-size: 12px;
+}
+.history-heading select {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.history-chart {
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  min-height: 34px;
+  margin-top: 10px;
+  padding: 6px;
+  border-radius: 8px;
+  background: #0b111c;
+}
+.history-point {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px;
+}
+.history-point.success { background: #65e6b5; }
+.history-point.failure { background: #ff6f7d; }
+.outage-note {
+  margin: 8px 0 0;
+  color: #ff9a9a;
+  font-size: 12px;
+}
+.outage-history {
+  margin-top: 10px;
+  color: #8d9aad;
+  font-size: 11px;
+}
+.outage-history p {
+  margin: 4px 0 0;
+}
+.outage-history strong {
+  color: #e8edf5;
 }
 .empty {
   border: 1px dashed #34445c;
