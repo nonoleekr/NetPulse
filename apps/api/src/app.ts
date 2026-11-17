@@ -11,6 +11,7 @@ import type { NextFunction, Request, Response } from "express";
 import { logger } from "./logger.js";
 import { runDiagnostic } from "./diagnostics.js";
 import { agentRouter } from "./agent-routes.js";
+import { getNetworkAnalysis } from "./analysis-service.js";
 
 const commonInput = {
   name: z.string().trim().min(1).max(80),
@@ -26,6 +27,10 @@ const historyQuery = z.object({
   hours: z.coerce.number().int().min(1).max(24 * 30).default(24),
   page: z.coerce.number().int().min(1).max(10000).default(1),
   pageSize: z.coerce.number().int().min(1).max(500).default(200),
+});
+const analysisQuery = z.object({
+  hours: z.coerce.number().int().min(1).max(24 * 30).default(24),
+  monitorId: z.string().trim().min(1).max(100).optional(),
 });
 
 export const app = express();
@@ -79,6 +84,21 @@ app.use(agentRouter);
 app.get("/api/health", async (_request, response) => {
   await prisma.$queryRaw`SELECT 1`;
   response.json({ data: { status: "ok" } });
+});
+
+app.get("/api/analysis", async (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  const parsed = analysisQuery.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "hours must be between 1 and 720 and monitorId must be bounded" } });
+    return;
+  }
+  const data = await getNetworkAnalysis(parsed.data.hours, parsed.data.monitorId);
+  if (!data) {
+    response.status(404).json({ error: { code: "MONITOR_NOT_FOUND", message: "Monitor not found" } });
+    return;
+  }
+  response.json({ data });
 });
 
 app.get("/api/monitors/:id/diagnostics", async (request, response) => {

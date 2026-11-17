@@ -29,8 +29,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await Promise.all([fixture, tlsFixture].map((server) => new Promise<void>((resolve, reject) => {
-    server.closeAllConnections();
     server.close((error) => error ? reject(error) : resolve());
+    server.closeAllConnections();
   })));
 });
 
@@ -125,4 +125,23 @@ test("protects agent management and displays one-time enrollment", async ({ page
   await expect(enrollment).toContainText("One-time enrollment token");
   await expect(enrollment.locator("code")).not.toBeEmpty();
   await expect(enrollment).toContainText("It will not be shown again");
+});
+
+test("renders deterministic analysis with explicit insufficient evidence", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Network analysis" })).toBeVisible();
+  await expect(page.getByText("Deterministic analysis · AI assistance disabled")).toBeVisible();
+
+  await page.getByLabel("Monitor name").fill("Analysis browser fixture");
+  await page.getByLabel("HTTP URL").fill(fixtureUrl);
+  await page.getByRole("button", { name: "Start monitoring" }).click();
+  await expect(page.locator(".card").filter({ hasText: "Analysis browser fixture" })).toContainText("Up");
+  await page.getByRole("button", { name: "Refresh analysis" }).click();
+
+  const analysis = page.locator("section.analysis");
+  await expect(analysis).toContainText("insufficient data");
+  await expect(analysis).toContainText("Insufficient measurement history");
+  await expect(analysis).toContainText("All displayed conclusions come from deterministic rules and stored evidence");
+  await expect(analysis).toContainText("1 local / 0 agent");
+  await deleteMonitor(page, "Analysis browser fixture");
 });

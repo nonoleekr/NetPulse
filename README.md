@@ -2,7 +2,7 @@
 
 Local-first network monitoring for developers who want to understand the reliability of the services they depend on.
 
-> **Current status:** Milestones 1 through 8.3 are implemented. NetPulse monitors HTTP(S), TCP, and ICMP targets, provides bounded DNS/route/TLS/HTTP diagnostics, and includes an authenticated loopback agent prototype. Public and cross-device deployment remain out of scope.
+> **Current status:** Milestone 8.4 is the final planned milestone. NetPulse includes local monitoring, bounded diagnostics, an authenticated loopback agent prototype, and deterministic evidence-based analysis. Development is temporarily paused; public and cross-device deployment remain out of scope.
 
 Security review status is documented in [`docs/security-audit.md`](./docs/security-audit.md).
 The application is suitable for local development and local Docker use only;
@@ -61,11 +61,12 @@ The long-term vision is a practical network monitoring dashboard with multiple p
 | Reliability | Per-monitor scheduling, one in-flight probe, and persisted outage transitions | Maintenance windows and alert policies |
 | Operations | Local Windows development workflow | CI, Docker, and deployment documentation |
 | Agents | Authenticated loopback prototype with HTTP/TCP/ICMP capability controls | Verified TLS transport before cross-device use |
+| Analysis | Deterministic, evidence-linked health findings and baseline comparisons | Optional local-model assistance only after separate approval |
 | Notifications | Not available | Alerting and notification channels |
 
 Only the current implementation described below should be treated as available.
 
-## Current Status: Milestone 8.3
+## Current Status: Milestone 8.4 — Temporarily Paused
 
 Milestone 1 delivers the smallest runnable HTTP monitoring vertical slice:
 
@@ -151,6 +152,15 @@ Milestone 8.3 adds:
 - Capability-aware monitor assignment, correlated remote results, source attribution, duplicate-session replacement, and stale/duplicate-result rejection.
 - A bearer-protected Agent Management dashboard. Plaintext enrollment and agent transport are accepted on loopback only; cross-device operation is deliberately rejected.
 
+Milestone 8.4 adds:
+
+- A read-only deterministic analysis engine for measurements, outages, DNS, HTTP, TLS, and local/agent attribution.
+- Explicit sample thresholds, latency baseline comparisons, severity, evidence-quality labels, and supporting record IDs/timestamps.
+- Clear separation between observations, possible explanations, confirmed findings, and recommended troubleshooting steps.
+- An accessible Analysis dashboard with insufficient-data and AI-disabled states.
+- A disabled-by-default provider-independent AI boundary; no model, paid service, or outbound AI request is configured.
+- Final architecture, security, project-status, and future-roadmap documentation for a temporary development freeze.
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -186,7 +196,11 @@ flowchart LR
   Events --> Gateway
   Agent[Loopback monitoring agent] -->|Outbound authenticated WebSocket| API
   Scheduler -->|Capability-scoped tasks| Agent
+  API --> Analysis[Deterministic stored-evidence analysis]
+  Analysis --> DB
 ```
+
+See [`docs/architecture.md`](./docs/architecture.md) for trust boundaries and detailed data flow.
 
 In local development, Vite serves the dashboard on port 5173 and the API binds
 to `127.0.0.1:4000`. In Docker Compose, Nginx serves the dashboard on port 8080,
@@ -256,9 +270,11 @@ npm run db:generate
 npm run db:migrate
 ```
 
-`npm ci` is preferred for a clean checkout and is used by CI. If your npm
-installation blocks package lifecycle scripts, run `npm run db:generate`
-explicitly after installation before starting tests or the API.
+`npm ci` is preferred for a clean checkout and is used by CI. Do not use
+`--ignore-scripts`: `better-sqlite3` requires its native installation step. If
+your npm security policy blocks lifecycle scripts, review and approve the
+required project dependencies under that policy, rerun `npm ci`, and then run
+`npm run db:generate` explicitly before tests or the API.
 
 ### Start NetPulse
 
@@ -370,6 +386,10 @@ Measurements and completed outages remain in the SQLite database when the API re
 
 `GET /api/monitors/:id/history?hours=24&page=1&pageSize=200` returns bounded measurements, outage records, pagination metadata, and window statistics. `hours` accepts 1-720 and `pageSize` accepts 1-500. API timestamps are UTC ISO-8601 strings and are rendered in the browser's local timezone.
 
+### Analysis API
+
+`GET /api/analysis?hours=24` returns deterministic overall and per-monitor health, prioritized findings, evidence IDs/timestamps, baseline comparisons, and local/agent source counts. An optional bounded `monitorId` filters the result. `hours` accepts 1-720. The response discloses monitor or evidence truncation when configured query caps are reached. This endpoint reads stored records only; it never starts a probe or diagnostic.
+
 ## Development Roadmap
 
 - [x] **Milestone 1 — Secure HTTP monitoring MVP**
@@ -407,13 +427,17 @@ Measurements and completed outages remain in the SQLite database when the API re
   - [x] CI Docker-build, audit, test, lint, migration, and production-build checks
   - [x] Installation, backup/restore, changelog, and release checklist documentation
   - [x] MIT license and local-only `v0.1.0` GitHub release
-- [ ] **Milestone 8 — Advanced diagnostics foundation**
+- [x] **Milestone 8 — Advanced diagnostics and analysis foundation**
   - [x] Milestone 8.1: typed, persisted DNS and Windows-first route diagnostics
   - [x] Bounded execution, cancellation, output limits, and platform capability reporting
   - [x] Milestone 8.2: safe TLS certificate inspection and advanced HTTP diagnostics
   - [x] Milestone 8.3: least-privilege authenticated loopback agent protocol and management prototype
   - [ ] Verified TLS transport and deployment authentication before cross-device agents
-  - [ ] Evidence-first analysis exports before any AI assistance
+  - [x] Milestone 8.4: evidence-first deterministic analysis and project finalization
+  - [x] AI remains optional and disabled; provider integration deferred pending privacy/security approval
+- [x] **Temporary development freeze**
+  - [x] Final architecture, status, security, and future-roadmap documentation
+  - [x] No additional feature milestone begins without explicit approval
 - [ ] **Future — Alerts and scale**
   - [ ] Notifications, maintenance windows, and escalation
   - [ ] Multi-region monitoring after authenticated agent enrollment
@@ -430,6 +454,9 @@ Measurements and completed outages remain in the SQLite database when the API re
 │   │   │   └── schema.prisma     Database schema
 │   │   └── src
 │   │       ├── app.ts            Express routes and validation
+│   │       ├── analysis.ts       Pure deterministic rule engine
+│   │       ├── analysis-service.ts Bounded stored-evidence queries
+│   │       ├── analysis-ai.ts    Disabled provider interface and redaction
 │   │       ├── config.ts         Environment configuration
 │   │       ├── db.ts             Prisma client
 │   │       ├── probe.ts          HTTP probe implementation
@@ -442,6 +469,8 @@ Measurements and completed outages remain in the SQLite database when the API re
 │   │       ├── scheduler.ts      Scheduled monitor execution
 │   │       ├── target.ts         URL, DNS, and SSRF validation
 │   │       └── server.ts         API startup and shutdown
+│   ├── agent
+│   │   └── src                   Outbound session, probes, target validation
 │   └── web
 │       └── src
 │           ├── main.tsx          React dashboard
@@ -464,10 +493,10 @@ npm audit --omit=dev --audit-level=high
 npm audit --audit-level=high
 ```
 
-The current suite includes 61 API and 5 agent tests covering configuration, target-validation,
+The current suite includes 73 API and 5 agent tests covering configuration, target-validation,
 HTTP/TCP/ICMP probe, outage-state, scheduler-ordering, WebSocket, and
-operational-resilience behavior plus agent enrollment, authentication, session replacement, result correlation, and SSRF controls. Five deterministic Playwright workflows cover
-monitor lifecycle, real local HTTP and TLS diagnostic rendering, and protected agent enrollment UI. The
+operational-resilience behavior plus agent enrollment, authentication, session replacement, result correlation, SSRF controls, analysis rules, evidence contracts, redaction, and AI-disabled behavior. Six deterministic Playwright workflows cover
+monitor lifecycle, real local HTTP and TLS diagnostic rendering, protected agent enrollment UI, and deterministic analysis rendering. The
 production build creates the API output in `apps/api/dist` and the frontend
 output in `apps/web/dist`.
 
@@ -482,6 +511,8 @@ vulnerabilities.
 - The application is local-only and has no authentication or multi-user support.
 - Agent administration has a separate bearer-token boundary, but the general monitoring API remains unauthenticated and localhost-only.
 - Agent enrollment and transport are loopback-only in Milestone 8.3. Cross-device use requires a future verified TLS design; do not bypass the address checks.
+- Analysis uses transparent fixed thresholds and bounded recent samples; it is advisory and cannot prove root cause.
+- AI assistance is disabled. No external or local model integration is included in the verified application.
 - WebSocket notifications are implemented, but REST remains authoritative and is used to recover missed updates.
 - The dashboard history chart is intentionally compact and not a full analytics/charting suite.
 - Sampled availability remains the default probe-based statistic; duration availability begins when a persisted outage is detected.
@@ -517,3 +548,8 @@ NetPulse is released under the [MIT License](./LICENSE). Version `v0.1.0` is
 for local installation and trusted-host Docker use only. The application has
 no general API authentication or cross-device TLS and must not be exposed directly to the public
 Internet.
+
+Development is temporarily paused after Milestone 8.4. See
+[`docs/project-final-status.md`](./docs/project-final-status.md) for the exact
+restart procedure and [`docs/future-roadmap.md`](./docs/future-roadmap.md) for
+deferred work. The published `v0.1.0` release is unchanged.

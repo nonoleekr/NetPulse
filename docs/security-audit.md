@@ -101,3 +101,11 @@ Milestone 8.3 introduces a deliberately loopback-only remote-execution prototype
 WebSocket authentication signs a fresh coordinator nonce plus agent identity and timestamp. The coordinator rejects stale signatures, inactive identities, oversized payloads, unsupported capabilities, stale session generations, expired tasks, and duplicate task results. A newer authenticated session replaces the older session. Agent probes independently re-resolve and validate targets, pin HTTP/TCP connections to the validated address, use argument-array ICMP invocation, and enforce timeouts and concurrency bounds.
 
 Cross-device transport is not approved in this milestone. Both enrollment and agent WebSocket upgrades require a loopback peer, and the agent accepts only a loopback `http://` coordinator. This is a security control, not a deployment inconvenience: TLS certificate policy and broader coordinator authentication have not been implemented or verified. Do not use port forwarding, proxies, address rewriting, or modified builds to bypass it.
+
+## Milestone 8.4 analysis and privacy addendum
+
+The analysis endpoint is read-only and queries bounded stored windows. It has no path to the scheduler, diagnostic execution, agent dispatch, filesystem, or command execution. Findings include record identifiers and sanitized summaries rather than target URLs, credentials, raw diagnostic bodies, agent keys, or enrollment secrets. Malformed stored diagnostic JSON is ignored by structural guards.
+
+AI assistance is disabled by default and no provider, API key, model dependency, or outbound model request exists. The provider-independent interface cannot execute commands or remediation. A bounded redaction helper covers common credential labels, URLs, private IPv4 ranges, unique-local IPv6 prefixes, and control characters, but it is not sufficient by itself to authorize a future model integration. Explicit consent, payload preview, prompt-injection analysis, structured-output validation, and provider privacy review remain mandatory future controls.
+
+The general unauthenticated API and cross-device agent transport remain the primary security blockers. Deterministic analysis does not change the local-only deployment approval.

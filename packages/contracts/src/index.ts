@@ -201,3 +201,76 @@ export type AgentCoordinatorMessage =
 export function agentAuthenticationPayload(agentId: string, nonce: string, signedAt: string) {
   return `netpulse-agent-auth-v1\n${agentId}\n${nonce}\n${signedAt}`;
 }
+
+export type AnalysisHealth = "HEALTHY" | "DEGRADED" | "CRITICAL" | "INSUFFICIENT_DATA";
+export type AnalysisSeverity = "INFO" | "WARNING" | "CRITICAL";
+export type EvidenceQuality = "LOW" | "MEDIUM" | "HIGH";
+export type FindingClassification = "OBSERVATION" | "CONFIRMED_FINDING";
+export type AnalysisCategory = "DATA_QUALITY" | "LATENCY" | "AVAILABILITY" | "CONNECTION" | "OUTAGE" | "DNS" | "HTTP" | "TLS";
+
+export type AnalysisEvidence = {
+  kind: "MEASUREMENT" | "OUTAGE" | "DIAGNOSTIC";
+  id: string;
+  occurredAt: string;
+  summary: string;
+};
+
+export type AnalysisFinding = {
+  id: string;
+  monitorId: string;
+  category: AnalysisCategory;
+  severity: AnalysisSeverity;
+  confidence: EvidenceQuality;
+  classification: FindingClassification;
+  title: string;
+  observation: string;
+  possibleExplanations: string[];
+  recommendation: string;
+  evidence: AnalysisEvidence[];
+};
+
+export type MonitorAnalysis = {
+  monitorId: string;
+  monitorName: string;
+  monitorKind: "HTTP" | "TCP" | "ICMP";
+  health: AnalysisHealth;
+  summary: string;
+  measurementCount: number;
+  successfulCount: number;
+  failedCount: number;
+  sampledAvailabilityPercent: number | null;
+  averageLatencyMs: number | null;
+  baseline: {
+    baselineSampleCount: number;
+    recentSampleCount: number;
+    baselineAverageLatencyMs: number;
+    recentAverageLatencyMs: number;
+    changePercent: number;
+  } | null;
+  sourceCounts: { local: number; agent: number };
+  evidenceWindowTruncated: boolean;
+  findings: AnalysisFinding[];
+};
+
+export type NetworkAnalysis = {
+  generatedAt: string;
+  window: { from: string; to: string; hours: number };
+  health: AnalysisHealth;
+  summary: string;
+  analyzedMonitorCount: number;
+  limits: {
+    monitorsTruncated: boolean;
+    maximumMonitors: number;
+    maximumMeasurementsPerMonitor: number;
+    maximumOutagesPerMonitor: number;
+    maximumDiagnosticsPerMonitor: number;
+  };
+  findings: AnalysisFinding[];
+  monitors: MonitorAnalysis[];
+  assistance: {
+    enabled: false;
+    status: "DISABLED";
+    provider: null;
+    message: string;
+  };
+};

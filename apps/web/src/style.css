@@ -123,3 +123,26 @@ button:disabled { cursor: wait; opacity: .55; }
 .enrollment-token code { user-select: all; }
 .pill.online { color: #7af0c1; }
 .pill.suspended, .pill.revoked { color: #ffb1b1; }
+.analysis-controls { display: flex; align-items: end; gap: 12px; margin-top: 22px; }
+.analysis-summary { display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 14px; border: 1px solid #253247; border-radius: 12px; }
+.analysis-summary > div, .analysis-monitor > div { display: grid; gap: 4px; }
+.analysis-summary span:not(.pill), .analysis-monitor span, .analysis-boundary { color: #9aa8bb; font-size: 12px; }
+.analysis-boundary { margin: 12px 0; }
+.analysis-limit { margin: 12px 0; padding: 10px 12px; color: #f4c76d; background: #44351b; border: 1px solid #77602e; border-radius: 10px; }
+.analysis-healthy { color: #7af0c1; background: #163d34; }
+.analysis-degraded { color: #f4c76d; background: #44351b; }
+.analysis-critical { color: #ffb1b1; background: #4a2228; }
+.analysis-insufficient_data { color: #bac5d4; background: #1b283b; }
+.finding-list { display: grid; gap: 12px; margin-top: 16px; }
+.finding { border: 1px solid #253247; border-left-width: 4px; border-radius: 12px; padding: 16px; background: #0e1724; }
+.finding-critical { border-left-color: #ff7f89; }
+.finding-warning { border-left-color: #f4c76d; }
+.finding-info { border-left-color: #7fa8d8; }
+.finding-heading { display: flex; justify-content: space-between; gap: 12px; }
+.finding-meta { display: block; margin-bottom: 5px; color: #9aa8bb; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.finding p { line-height: 1.5; }
+.finding details { color: #bac5d4; }
+.finding li { margin-top: 6px; overflow-wrap: anywhere; }
+.analysis-monitors { display: grid; gap: 8px; margin-top: 16px; }
+.analysis-monitor { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid #253247; }
+@media (max-width: 640px) { .analysis-summary, .finding-heading, .analysis-monitor { align-items: flex-start; flex-direction: column; } }

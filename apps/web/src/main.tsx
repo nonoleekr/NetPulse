@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { DiagnosticKind, DiagnosticRun, WebSocketEvent } from "@netpulse/contracts";
+import type { DiagnosticKind, DiagnosticRun, NetworkAnalysis, WebSocketEvent } from "@netpulse/contracts";
 import "./style.css";
 
 type Measurement = {
@@ -102,6 +102,10 @@ function App() {
   const [agentError, setAgentError] = useState("");
   const [enrollmentToken, setEnrollmentToken] = useState<{ token: string; expiresAt: string } | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
+  const [analysis, setAnalysis] = useState<NetworkAnalysis | null>(null);
+  const [analysisHours, setAnalysisHours] = useState("24");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const socket = useRef<WebSocket | undefined>(undefined);
   const reconnectAttempt = useRef(0);
@@ -114,6 +118,12 @@ function App() {
     setAgentError("");
     try { setAgents(await adminRequest<Agent[]>("/admin/agents")); }
     catch (loadError) { setAgentError(loadError instanceof Error ? loadError.message : "Could not load agents."); }
+  };
+  const loadAnalysis = async () => {
+    setAnalysisLoading(true); setAnalysisError("");
+    try { setAnalysis(await request<NetworkAnalysis>(`/analysis?hours=${analysisHours}`)); }
+    catch (loadError) { setAnalysisError(loadError instanceof Error ? loadError.message : "Could not load analysis."); }
+    finally { setAnalysisLoading(false); }
   };
   const createEnrollment = async () => {
     setAgentBusy(true); setAgentError("");
@@ -188,6 +198,8 @@ function App() {
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
   }, [historyHours]);
+
+  useEffect(() => { void loadAnalysis(); }, [analysisHours]);
 
   useEffect(() => {
     let disposed = false;
@@ -317,6 +329,38 @@ function App() {
       </div>
       {diagnosticError && <p className="error" role="alert">{diagnosticError}</p>}
       {diagnostic && <div className="diagnostic-result" role="status"><strong>{diagnostic.kind} · {diagnostic.status}</strong><span>{new Date(diagnostic.startedAt).toLocaleString()} · {diagnostic.durationMs ?? "—"} ms</span>{diagnostic.result?.kind === "DNS" && <><span>A: {diagnostic.result.records.A.join(", ") || "No records"} ({diagnostic.result.recordStatus.A.toLowerCase()})</span><span>AAAA: {diagnostic.result.records.AAAA.join(", ") || "No records"} ({diagnostic.result.recordStatus.AAAA.toLowerCase()})</span></>}{diagnostic.result?.kind === "ROUTE" && <span>{diagnostic.result.platform}: {diagnostic.result.hops.length} hops reported</span>}{diagnostic.result?.kind === "HTTP" && <><span>HTTP/{diagnostic.result.httpVersion} {diagnostic.result.statusCode} · {diagnostic.result.redirectCount} redirects</span><span>DNS {diagnostic.result.timings.dnsLookupMs} ms · connect {diagnostic.result.timings.tcpConnectMs} ms · TLS {diagnostic.result.timings.tlsHandshakeMs ?? "—"} ms · first byte {diagnostic.result.timings.timeToFirstByteMs} ms</span><span>{diagnostic.result.finalUrl} · {diagnostic.result.responseBytes} bytes{diagnostic.result.responseTruncated ? " (bounded)" : ""}</span></>}{diagnostic.result?.kind === "TLS" && <><span>{diagnostic.result.protocol ?? "Unknown protocol"} · {diagnostic.result.cipher ?? "Unknown cipher"} · {diagnostic.result.authorized ? "trusted" : `not trusted${diagnostic.result.authorizationError ? ` (${diagnostic.result.authorizationError})` : ""}`}</span><span>{diagnostic.result.hostnameMatched ? "hostname matches" : `hostname mismatch${diagnostic.result.hostnameError ? ` (${diagnostic.result.hostnameError})` : ""}`} · certificate {diagnostic.result.certificate.validityStatus.toLowerCase()}</span><span>{diagnostic.result.certificate.subjectCommonName ?? diagnostic.result.hostname} · expires {new Date(diagnostic.result.certificate.validTo).toLocaleDateString()} ({diagnostic.result.certificate.daysRemaining} days)</span><span>DNS {diagnostic.result.timings.dnsLookupMs} ms · connect {diagnostic.result.timings.tcpConnectMs} ms · handshake {diagnostic.result.timings.tlsHandshakeMs} ms</span></>}{diagnostic.errorMessage && <span className="error">{diagnostic.errorMessage}</span>}</div>}
+    </section>
+    <section className="panel analysis" aria-labelledby="analysis-heading">
+      <div className="section-heading"><div><p className="section-kicker">Evidence review</p><h2 id="analysis-heading">Network analysis</h2></div><span className="panel-note">Deterministic analysis · AI assistance disabled</span></div>
+      <div className="analysis-controls">
+        <label>Analysis window<select aria-label="Analysis window" value={analysisHours} onChange={(event) => setAnalysisHours(event.target.value)}><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></label>
+        <button type="button" className="secondary" disabled={analysisLoading} onClick={() => void loadAnalysis()}>{analysisLoading ? "Analyzing…" : "Refresh analysis"}</button>
+      </div>
+      {analysisError && <p className="error" role="alert">{analysisError}</p>}
+      {analysis && <>
+        <div className="analysis-summary" role="status" aria-live="polite">
+          <span className={`pill analysis-${analysis.health.toLowerCase()}`}>{analysis.health.toLowerCase().replaceAll("_", " ")}</span>
+          <div><strong>{analysis.summary}</strong><span>{analysis.analyzedMonitorCount} monitor(s) · {new Date(analysis.window.from).toLocaleString()} to {new Date(analysis.window.to).toLocaleString()}</span></div>
+        </div>
+        <p className="analysis-boundary">{analysis.assistance.message}</p>
+        {(analysis.limits.monitorsTruncated || analysis.monitors.some((monitor) => monitor.evidenceWindowTruncated)) && <p className="analysis-limit" role="status">Analysis reached a configured query limit. Findings use the newest bounded evidence and may not represent older records in the selected window.</p>}
+        {!analysis.findings.length && <p className="muted">No findings matched the selected evidence window.</p>}
+        <div className="finding-list">
+          {analysis.findings.map((finding) => {
+            const analyzedMonitor = analysis.monitors.find((item) => item.monitorId === finding.monitorId);
+            return <article className={`finding finding-${finding.severity.toLowerCase()}`} key={finding.id}>
+              <div className="finding-heading"><div><span className="finding-meta">{finding.severity} · {finding.confidence} evidence · {finding.classification.replaceAll("_", " ")}</span><h3>{finding.title}</h3></div><span className="muted">{analyzedMonitor?.monitorName ?? finding.monitorId}</span></div>
+              <p><strong>Observation:</strong> {finding.observation}</p>
+              {finding.possibleExplanations.length > 0 && <p><strong>Possible explanation:</strong> {finding.possibleExplanations.join(" ")}</p>}
+              <p><strong>Recommended next step:</strong> {finding.recommendation}</p>
+              {finding.evidence.length > 0 && <details><summary>Supporting evidence ({finding.evidence.length})</summary><ul>{finding.evidence.map((item) => <li key={`${item.kind}-${item.id}`}><code>{item.id}</code> · {new Date(item.occurredAt).toLocaleString()} · {item.summary}</li>)}</ul></details>}
+            </article>;
+          })}
+        </div>
+        <div className="analysis-monitors">
+          {analysis.monitors.map((monitor) => <article key={monitor.monitorId} className="analysis-monitor"><div><strong>{monitor.monitorName}</strong><span>{monitor.monitorKind} · {monitor.measurementCount} samples · {monitor.sourceCounts.local} local / {monitor.sourceCounts.agent} agent{monitor.evidenceWindowTruncated ? " · evidence limit reached" : ""}</span></div><span>{monitor.baseline ? `${monitor.baseline.recentAverageLatencyMs} ms recent vs ${monitor.baseline.baselineAverageLatencyMs} ms baseline (${monitor.baseline.changePercent}%)` : "Baseline unavailable"}</span></article>)}
+        </div>
+      </>}
     </section>
     <section className="panel agents" aria-labelledby="agents-heading">
       <div className="section-heading"><div><p className="section-kicker">Remote execution</p><h2 id="agents-heading">Agent management</h2></div><span className="panel-note">Loopback prototype · cross-device disabled</span></div>

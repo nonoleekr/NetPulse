@@ -26,9 +26,18 @@ deterministic and does not add public deployment or AI-generated decisions.
    - Short-lived hashed enrollment tokens, Ed25519 challenge authentication, credential rotation/revocation, heartbeat state, task correlation, and source attribution are implemented.
    - The verified scope is loopback only. The coordinator and agent both reject cross-device plaintext traffic; authenticated TLS transport remains a prerequisite for cross-device support.
 5. **Analysis assistance**
-   - Export structured diagnostics for human review first.
-   - Consider AI-assisted summaries only after privacy, provenance, redaction,
-     and user-confirmation requirements are specified.
+   - Completed in Milestone 8.4 with deterministic, evidence-linked findings,
+     bounded read-only queries, explicit thresholds, confidence labels, and an
+     accessible Analysis dashboard.
+   - AI assistance remains disabled. A provider-independent interface and
+     redaction prerequisite are present, but no model invocation or paid
+     service was added without a separate privacy and security review.
+
+## Finalization status
+
+Milestone 8.4 is the final planned milestone. Development is temporarily
+paused after its verification; future items are recorded in
+`docs/future-roadmap.md` and require explicit approval to resume.
 
 ## Guardrails
 
